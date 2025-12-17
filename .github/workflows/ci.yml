@@ -17,10 +17,33 @@ jobs:
       - name: Generate tfvars from YAML
         run: |
           pip install pyyaml
-          python scripts/parser.py OMNITRAC/kafka-request.yaml terraform/terraform.tfvars.json
+          file=$(git ls-files '*kafka-request.yaml' | head -n1)
+          if [ -z "$file" ]; then
+            echo "No kafka-request.yaml found in repository" >&2
+            exit 1
+          fi
+          echo "Using kafka request file: $file"
+          python scripts/parser.py "$file" terraform/terraform.tfvars.json
       - name: Terraform Init
         run: terraform -chdir=terraform init -upgrade
       - name: Terraform Plan
         run: terraform -chdir=terraform plan -no-color -out=tfplan.bin
       - name: Save human-readable plan
         run: terraform -chdir=terraform show -no-color tfplan.bin > terraform/plan.txt
+      - name: Post plan as PR comment
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('terraform/plan.txt', 'utf8');
+            const max = 65000;
+            const bodyPlan = plan.length > max ? plan.slice(0, max) + '\n\n***plan truncated***' : plan;
+            const body = '### Terraform plan\n\n```text\n' + bodyPlan + '\n```';
+            const prNumber = context.payload.pull_request.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body,
+            });
