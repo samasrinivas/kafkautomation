@@ -3,9 +3,9 @@ Purpose
 
 Big picture
 - This repo converts a YAML "kafka request" (see OMNITRAC/kafka-request.yaml) into a JSON structure consumed by Terraform. The flow is:
-1. Write a request YAML (topics, schemas, acls).
-2. Run `scripts/parser.py` to produce a JSON object with top-level keys `topics`, `schemas`, and `acls`.
-3. Provide that JSON to Terraform as variables (see `terraform/variables.tf`).
+    1. Write a request YAML (topics, schemas, acls).
+    2. Run `scripts/parser.py` to produce a JSON object with top-level keys `topics`, `schemas`, and `acls`.
+    3. Provide that JSON to Terraform as variables (see `terraform/variables.tf`).
 
 Key files (examples and patterns)
 - `OMNITRAC/kafka-request.yaml` — canonical example request (topics, schemas, acls).
