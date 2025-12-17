@@ -7,8 +7,8 @@ terraform {
     }
   }
   backend "s3" {
-    bucket         = "mycompany-terraform-state"
-    key            = "kafka/prod/terraform.tfstate"
+    bucket         = "platform-engineering-terraform-state"
+    key            = "terraform/all-state/data-streaming-platform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-locks"
     encrypt        = true

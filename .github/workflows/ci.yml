@@ -17,7 +17,7 @@ jobs:
       - name: Generate tfvars from YAML
         run: |
           pip install pyyaml
-          python scripts/parser.py manifests/example-service/kafka-request.yaml terraform/terraform.tfvars.json
+          python scripts/parser.py OMNITRAC/kafka-request.yaml terraform/terraform.tfvars.json
       - name: Terraform Init
         run: terraform -chdir=terraform init -upgrade
       - name: Terraform Plan
