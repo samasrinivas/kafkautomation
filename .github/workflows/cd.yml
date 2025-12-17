@@ -1,4 +1,4 @@
-name: Kafka GitOps CD Flow
+name: Kafka GitOps CD
 on:
   push:
     branches: [ main ]

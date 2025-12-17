@@ -1,4 +1,4 @@
-name: Kafka GitOps CI Flow
+name: Kafka GitOps CI
 on:
   pull_request:
     branches: [ main ]
