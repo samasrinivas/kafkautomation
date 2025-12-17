@@ -1,0 +1,19 @@
+name: Kafka GitOps CD
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Export Confluent creds
+        run: |
+          echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY }}" >> $GITHUB_ENV
+          echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET }}" >> $GITHUB_ENV
+      - name: Terraform Init
+        run: terraform -chdir=terraform init -upgrade
+      - name: Terraform Apply
+        run: terraform -chdir=terraform apply -auto-approve

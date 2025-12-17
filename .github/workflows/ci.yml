@@ -1,0 +1,26 @@
+name: Kafka GitOps CI
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Export Confluent creds
+        run: |
+          echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY }}" >> $GITHUB_ENV
+          echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET }}" >> $GITHUB_ENV
+      - name: Generate tfvars from YAML
+        run: |
+          pip install pyyaml
+          python scripts/parser.py manifests/example-service/kafka-request.yaml terraform/terraform.tfvars.json
+      - name: Terraform Init
+        run: terraform -chdir=terraform init -upgrade
+      - name: Terraform Plan
+        run: terraform -chdir=terraform plan -no-color -out=tfplan.bin
+      - name: Save human-readable plan
+        run: terraform -chdir=terraform show -no-color tfplan.bin > terraform/plan.txt
