@@ -42,7 +42,7 @@ jobs:
           python scripts/parser.py "$file" terraform/terraform.tfvars.json
 
       - name: Terraform Init
-        run: terraform -chdir=terraform init -backend-config="bucket=$TF_BUCKET_STATE"
+        run: terraform -chdir=terraform init -backend-config="bucket=$TF_BUCKET_STATE" -reconfigure
 
       - name: Terraform validate
         run: terraform -chdir=terraform validate
