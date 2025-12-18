@@ -1,0 +1,8 @@
+# Terraform artifacts
+terraform/terraform.tfvars.json
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+tfplan.bin
+terraform/plan.txt
