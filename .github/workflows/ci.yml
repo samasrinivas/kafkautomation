@@ -24,10 +24,11 @@ jobs:
       - name: Verify AWS identity
         run: aws sts get-caller-identity
 
-      - name: Export Confluent creds
+      - name: Export constants to env
         run: |
           echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY }}" >> $GITHUB_ENV
           echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET }}" >> $GITHUB_ENV
+          echo "TF_BUCKET_STATE=${{ vars.TF_BUCKET_STATE }}" >> $GITHUB_ENV
 
       - name: Generate tfvars from YAML
         run: |
@@ -41,10 +42,10 @@ jobs:
           python scripts/parser.py "$file" terraform/terraform.tfvars.json
 
       - name: Terraform Init
-        run: terraform init -backend-config="bucket=$TF_BUCKET_STATE"
+        run: terraform -chdir=terraform init -backend-config="bucket=$TF_BUCKET_STATE"
 
       - name: Terraform validate
-        run: terraform validate
+        run: terraform -chdir=terraform validate
 
       - name: Terraform Plan
         run: terraform -chdir=terraform plan -no-color -out=tfplan.bin -input=false
@@ -52,6 +53,13 @@ jobs:
 
       - name: Save human-readable plan
         run: terraform -chdir=terraform show -no-color tfplan.bin > terraform/plan.txt
+      
+      - name: Upload tfvars artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-tfvars
+          path: terraform/terraform.tfvars.json
+          overwrite: true
         
       - name: Post plan as PR comment
         uses: actions/github-script@v6
