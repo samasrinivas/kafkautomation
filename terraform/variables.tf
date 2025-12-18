@@ -1,9 +1,30 @@
-variable "confluent_api_key" { type = string, sensitive = true }
-variable "confluent_api_secret" { type = string, sensitive = true }
-variable "environment_id"     { type = string }
-variable "kafka_cluster_id"   { type = string }
-variable "rest_endpoint"      { type = string }
-variable "schema_registry_id" { type = string }
+
+variable "confluent_api_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "confluent_api_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "environment_id" {
+  type = string
+}
+
+
+variable "kafka_cluster_id" {
+  type = string
+}
+
+variable "rest_endpoint" {
+  type = string
+}
+
+variable "schema_registry_id" {
+  type = string
+}
 
 variable "topics" {
   type = map(object({
