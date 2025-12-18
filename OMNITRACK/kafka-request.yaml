@@ -2,7 +2,7 @@ service_name: "payment-service"
 topics:
   - name: "payment-processed"
     partitions: 6
-    replication_factor: 3
+    replication_factor: 2
     config:
       retention.ms: "604800000"
 schemas:
