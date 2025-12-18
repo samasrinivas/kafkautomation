@@ -47,6 +47,13 @@ jobs:
       - name: Terraform validate
         run: terraform -chdir=terraform validate
 
+      - name: Debug:Check generated tfvars
+        run: |
+          echo "Checking if terraform.tfvars.json exists:"
+          ls -la terraform/terraform.tfvars.json
+          echo "Content of terraform.tfvars.json:"
+          cat terraform/terraform.tfvars.json
+          
       - name: Terraform Plan
         run: terraform -chdir=terraform plan -no-color -out=tfplan.bin -input=false -var-file="terraform.tfvars.json"
         continue-on-error: true
