@@ -60,18 +60,11 @@ jobs:
 
       - name: Save human-readable plan
         run: terraform -chdir=terraform show -no-color tfplan.bin > terraform/plan.txt
-      
-      - name: Upload tfvars artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-tfvars
-          path: terraform/terraform.tfvars.json
-          overwrite: true
         
       - name: Post plan as PR comment
         uses: actions/github-script@v6
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
             const plan = fs.readFileSync('terraform/plan.txt', 'utf8');
