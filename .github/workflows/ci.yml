@@ -7,13 +7,29 @@ on:
 jobs:
   plan:
     runs-on: ubuntu-latest
+
+permissions:
+      id-token: write
+      contents: read
+
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::311147460981:role/GitHubTerraformRole
+          aws-region: us-east-1
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
       - name: Export Confluent creds
         run: |
           echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY }}" >> $GITHUB_ENV
           echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET }}" >> $GITHUB_ENV
+
       - name: Generate tfvars from YAML
         run: |
           pip install pyyaml
@@ -24,12 +40,16 @@ jobs:
           fi
           echo "Using kafka request file: $file"
           python scripts/parser.py "$file" terraform/terraform.tfvars.json
+
       - name: Terraform Init
         run: terraform -chdir=terraform init -upgrade
+
       - name: Terraform Plan
         run: terraform -chdir=terraform plan -no-color -out=tfplan.bin
+
       - name: Save human-readable plan
         run: terraform -chdir=terraform show -no-color tfplan.bin > terraform/plan.txt
+        
       - name: Post plan as PR comment
         uses: actions/github-script@v6
         with:
