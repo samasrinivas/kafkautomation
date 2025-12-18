@@ -48,7 +48,7 @@ jobs:
         run: terraform -chdir=terraform validate
 
       - name: Terraform Plan
-        run: terraform -chdir=terraform plan -no-color -out=tfplan.bin -input=false
+        run: terraform -chdir=terraform plan -no-color -out=tfplan.bin -input=false -var-file="terraform.tfvars.json"
         continue-on-error: true
 
       - name: Save human-readable plan
