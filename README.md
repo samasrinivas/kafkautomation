@@ -42,21 +42,24 @@ kafkautomation/
 │
 ├── schemas/                      # Environment-specific schemas (optional)
 │   ├── dev/
-│   │   └── .gitkeep             # Add your schemas here
+│   │   └── <SCHEMA-FILE>.avsc             # Add your schemas here
 │   ├── test/
-│   │   └── .gitkeep
+│   │   └── <SCHEMA-FILE>.avsc
 │   ├── qa/
-│   │   └── .gitkeep
+│   │   └── <SCHEMA-FILE>.avsc
 │   └── prod/
-│       └── .gitkeep
+│       └── <SCHEMA-FILE>.avsc
 │
 ├── projects/                     # Developer projects (created by developers)
 │   ├── <PROJECT>/
 │   │   ├── dev/
 │   │   │   ├── kafka-request.yaml
 │   │   ├── test/
+│   │   │   ├── kafka-request.yaml
 │   │   ├── qa/
+│   │   │   ├── kafka-request.yaml
 │   │   └── prod/
+│   │   │   ├── kafka-request.yaml
 │   └── <ANOTHER_PROJECT>/
 │
 ├── terraform/

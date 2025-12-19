@@ -34,6 +34,9 @@ for t in data.get('topics', []):
 
 for s in data.get('schemas', []):
     schema_file = s['schema_file']
+    if not schema_file.startswith('schemas/'):
+        print(f'Error: Schema file must be under schemas/: {schema_file}')
+        sys.exit(1)
     if not os.path.exists(schema_file):
         print(f'Error: Schema file not found: {schema_file}')
         sys.exit(1)

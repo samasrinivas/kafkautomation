@@ -4,6 +4,7 @@ on:
     branches: [ main ]
     paths:
       - '**/kafka-request.yaml'
+      - 'schemas/**'
 
 jobs:
   apply:
