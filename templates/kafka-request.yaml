@@ -1,8 +1,8 @@
 service_name: "payment-service"
-environment_id: "env-ozk1yj"           
-kafka_cluster_id: "lkc-oj0vro"         
-rest_endpoint: "https://pkc-p11xm.us-east-1.aws.confluent.cloud:443"  
-schema_registry_id: "lsrc-g7g3om"     
+environment_id: "env-ozk1yj"
+kafka_cluster_id: "lkc-oj0vro"        
+rest_endpoint: "https://pkc-p11xm.us-east-1.aws.confluent.cloud:443"
+schema_registry_id: "lsrc-g7g3om"
 topics:
   - name: "payment-processed"
     partitions: 6
