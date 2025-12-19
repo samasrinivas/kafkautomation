@@ -8,7 +8,6 @@ terraform {
   }
   backend "s3" {
     bucket         = "platform-engineering-terraform-state"
-    key            = "terraform/all-state/data-streaming-platform.tfstate"
     region         = "us-east-1"
     use_lockfile  = true
     encrypt        = true

@@ -20,13 +20,11 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-        env:
-          TF_BUCKET_STATE: ${{ vars.TF_BUCKET_STATE }}
 
       - name: Verify AWS identity
         run: aws sts get-caller-identity
 
-      - name: Export constants to env
+      - name: Export creds & vars to env
         run: |
           echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY }}" >> $GITHUB_ENV
           echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET }}" >> $GITHUB_ENV
@@ -37,19 +35,36 @@ jobs:
           pip install yamllint
           yamllint $(git ls-files '*kafka-request.yaml')
 
-      - name: Generate tfvars from YAML
+      - name: Detect environment and find kafka-request.yaml
         run: |
-          pip install pyyaml
           file=$(git ls-files '*kafka-request.yaml' | head -n1)
           if [ -z "$file" ]; then
             echo "No kafka-request.yaml found in repository" >&2
             exit 1
           fi
-          echo "Using kafka request file: $file"
-          python scripts/parser.py "$file" terraform/terraform.tfvars.json
+          # Extract environment from path: projects/<PROJECT>/<ENV>/kafka-request.yaml
+          ENV=$(echo "$file" | cut -d'/' -f3)
+          if [ -z "$ENV" ] || [ "$ENV" = "kafka-request.yaml" ]; then
+            echo "Error: Could not extract environment from path: $file" >&2
+            exit 1
+          fi
+          echo "Found kafka-request.yaml: $file"
+          echo "Detected environment: $ENV"
+          echo "KAFKA_FILE=$file" >> $GITHUB_ENV
+          echo "ENVIRONMENT=$ENV" >> $GITHUB_ENV
+
+      - name: Generate tfvars from YAML
+        run: |
+          pip install pyyaml
+          echo "Using kafka request file: $KAFKA_FILE"
+          echo "Environment: $ENVIRONMENT"
+          python scripts/parser.py "$KAFKA_FILE" terraform/terraform.tfvars.json
 
       - name: Terraform Init
-        run: terraform -chdir=terraform init -backend-config="bucket=$TF_BUCKET_STATE" -reconfigure
+        run: terraform -chdir=terraform init \
+          -backend-config="key=terraform/${ENVIRONMENT}/data-streaming-platform.tfstate" \
+          -backend-config="bucket=$TF_BUCKET_STATE" \
+          -reconfigure
 
       - name: Terraform validate
         run: terraform -chdir=terraform validate

@@ -5,3 +5,6 @@
 .terraform.lock.hcl
 tfplan.bin
 terraform/plan.txt
+projects/*/terraform.tfvars.json
+projects/*/*/terraform.tfvars.json
+terraform/terraform.tfvars.json

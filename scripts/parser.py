@@ -1,4 +1,4 @@
-import yaml, json, sys
+import yaml, json, sys, os
 
 if len(sys.argv) != 3:
     print('Usage: parser.py <input-yaml> <output-json>')
@@ -33,9 +33,13 @@ for t in data.get('topics', []):
     }
 
 for s in data.get('schemas', []):
+    schema_file = s['schema_file']
+    if not os.path.exists(schema_file):
+        print(f'Error: Schema file not found: {schema_file}')
+        sys.exit(1)
     tf['schemas'][s['subject']] = {
         'subject': s['subject'],
-        'schema_file': s['schema_file']
+        'schema_file': schema_file
     }
 
 for i, a in enumerate(data.get('acls', [])):

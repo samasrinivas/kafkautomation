@@ -1,18 +1,31 @@
+# ⚠️  IMPORTANT: Do NOT change the Confluent Cloud cluster details below.
+# These values are specific to the DEV environment and must remain constant.
+# Contact the platform team if you need to update any of these values.
+
 service_name: "payment-service"
-environment_id: "env-ozk1yj"
-kafka_cluster_id: "lkc-oj0vro"
-rest_endpoint: "https://pkc-p11xm.us-east-1.aws.confluent.cloud:443"
-schema_registry_id: "lsrc-g7g3om"
+environment_id: "env-ozk1yj"              # DEV environment - do not change
+kafka_cluster_id: "lkc-oj0vro"           # DEV cluster - do not change
+rest_endpoint: "https://pkc-p11xm.us-east-1.aws.confluent.cloud:443"  # DEV REST endpoint - do not change
+schema_registry_id: "lsrc-g7g3om"        # DEV schema registry - do not change
 topics:
   - name: "payment-processed"
     partitions: 6
     replication_factor: 3
     config:
       retention.ms: "604800000"
-schemas:
-  - subject: "payment-processed-value"
-    schema_file: "../schemas/dev/payment_event.avsc"
+# SCHEMAS (OPTIONAL)
+# If your service needs a schema:
+# 1. Create an Avro schema file under schemas/dev/
+# 2. Uncomment and customize the block below
+# If you don't need a schema, leave this section commented.
+#
+# schemas:
+#   - subject: "my-service-events-value"
+#     schema_file: "schemas/dev/my-service-schema.avsc"
 acls:
   - principal: "User:sa-payment-producer"
     role: "DeveloperWrite"
+    # ⚠️  IMPORTANT: Do NOT change the crn_pattern below.
+    # It contains environment-specific values (organization, environment, cluster IDs) that are DEV-specific.
+    # Contact the platform team if you need to update the crn_pattern.
     crn_pattern: "crn://confluent.cloud/organization=db7bf8c7-4d1d-4e84-a594-8f771fe8e13b/environment=env-ozk1yj/cluster=lkc-oj0vro/topic=payment-processed"
