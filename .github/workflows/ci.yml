@@ -3,6 +3,8 @@ on:
   pull_request:
     branches: [ main ]
     types: [opened, synchronize, reopened]
+    paths:
+      - '**/kafka-request.yaml'
 
 jobs:
   plan:
@@ -29,6 +31,11 @@ jobs:
           echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY }}" >> $GITHUB_ENV
           echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET }}" >> $GITHUB_ENV
           echo "TF_BUCKET_STATE=${{ vars.TF_BUCKET_STATE }}" >> $GITHUB_ENV
+
+      - name: Lint kafka-request.yaml
+        run: |
+          pip install yamllint
+          yamllint $(git ls-files '*kafka-request.yaml')
 
       - name: Generate tfvars from YAML
         run: |
