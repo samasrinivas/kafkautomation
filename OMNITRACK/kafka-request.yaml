@@ -7,9 +7,9 @@ topics:
   - name: "payment-processed"
     partitions: 6
     replication_factor: 3
-     config : 
-          retention.ms: "604800000"
-schemas :
+    config: 
+      retention.ms: "604800000"
+schemas:
   - subject: "payment-processed-value"
     schema_file: "./schemas/payment_event.avsc"
 acls:
