@@ -71,8 +71,8 @@ kafkautomation/
 │   └── parser.py                # Converts YAML → JSON for Terraform
 │
 └── .github/workflows/
-    ├── ci.yml                   # Plan on PR (environment auto-detected)
-    └── cd.yml                   # Apply on merge to main (auto-approved)
+    ├── kafka-plan.yml           # Plan on PR (environment auto-detected)
+    └── kafka-apply.yml          # Apply on merge to main (auto-approved)
 ```
 
 ### Note on s3_bucket_full_access_policy policy files
@@ -219,8 +219,8 @@ Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/k
 - `scripts/parser.py` — Converts YAML to JSON for Terraform (runs automatically in CI/CD)
 - `terraform/main.tf` — Defines Confluent resources (for each topic, schema, ACL)
 - `terraform/providers.tf` — Backend config (S3 state, environment-isolated keys)
-- `.github/workflows/ci.yml` — Plan workflow (PR validation)
-- `.github/workflows/cd.yml` — Apply workflow (main merge automation)
+- `.github/workflows/kafka-plan.yml` — Plan workflow (PR validation)
+- `.github/workflows/kafka-apply.yml` — Apply workflow (main merge automation)
 
 ## Technical Details
 
@@ -250,12 +250,12 @@ Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/k
 - **Remote state:** S3 bucket `platform-engineering-terraform-state` with local lockfiles (`use_lockfile = true`); environment-isolated keys
 
 ### GitHub Actions Workflows
-- **CI (`ci.yml`):** Runs on PR for any `**/kafka-request.yaml` changes
+- **CI (`kafka-plan.yml`):** Runs on PR for any `**/kafka-request.yaml` or `schemas/**` changes
   - Validates YAML with `yamllint`
   - Detects environment from path (e.g., `<PROJECT>/dev/` → `dev`)
   - Generates tfvars and runs `terraform plan`
   - Posts plan as PR comment
-- **CD (`cd.yml`):** Runs on main merge
+- **CD (`kafka-apply.yml`):** Runs on main merge
   - Applies Terraform with `terraform apply -auto-approve`
   - Uploads artifact with environment name
 
