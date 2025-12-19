@@ -69,11 +69,3 @@ jobs:
 
       - name: Terraform Apply
         run: terraform -chdir=terraform apply -no-color -auto-approve tfplan.bin
-
-      - name: Upload apply artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-apply-${{ env.ENVIRONMENT }}
-          path: terraform/tfplan.bin
-          overwrite: true
