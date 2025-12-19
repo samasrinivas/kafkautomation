@@ -7,18 +7,20 @@ This repo automates Confluent Kafka resource provisioning through Git, providing
 ## Big Picture
 
 **How it works:**
-1. Developer creates a feature branch named after their project
-2. Developer copies environment-specific `kafka-request.yaml` from `templates/<ENV>/`
-3. Developer creates a project folder under `projects/<PROJECT_NAME>/<ENV>/`
-4. Developer adds their YAML config and optional Avro schemas
-5. CI workflow validates and generates Terraform variables
-6. CD workflow applies Terraform on main merge
-7. Resources are created in Confluent Cloud (environment-isolated)
+1. Create a feature branch named after your project.
+2. Create project folders under `projects/<PROJECT>/<ENV>/` (dev/test/qa/prod).
+3. Copy the environment template `templates/<ENV>/kafka-request.yaml` into your project folder.
+4. Schemas are optional. If needed, add Avro files under `schemas/<ENV>/` and reference them in `kafka-request.yaml`; otherwise, leave the `schemas:` section commented.
+5. CI runs on PR: lints YAML, converts to Terraform variables, auto-detects the environment from the file path, initializes Terraform with the per-environment backend key, and posts the plan as a PR comment.
+6. On merge to `main`, CD applies the plan with environment-specific settings. If schemas were omitted, no schema resources are created.
+7. Confluent resources are provisioned in the correct environment with isolated Terraform state (S3 key per environment).
 
 **YAML → Terraform flow:**
-- Write a `kafka-request.yaml` file (topics, schemas, acls, etc.)
-- Run `scripts/parser.py` to produce JSON consumed by Terraform
-- Terraform applies resources using `terraform/main.tf`
+- Author `projects/<PROJECT>/<ENV>/kafka-request.yaml` using the matching template; keep environment values unchanged.
+- Store any schema files under `schemas/<ENV>/...` and reference them via `schema_file` paths; leave the `schemas:` section commented if not needed.
+- `scripts/parser.py` converts YAML to JSON and validates schema file existence.
+- Workflows detect environment from path and set Terraform backend `key` per environment.
+- Terraform plans/applies using the generated variables to create topics, schemas, and ACLs.
 
 ## Directory Structure
 
@@ -26,13 +28,17 @@ This repo automates Confluent Kafka resource provisioning through Git, providing
 kafkautomation/
 ├── templates/                    # Environment templates (reference only)
 │   ├── dev/
-│   │   └── kafka-request.yaml   # DEV template - copy this
+│   │   ├── kafka-request.yaml   # DEV template - copy this
+│   │   └── s3_bucket_full_access_policy.json
 │   ├── test/
-│   │   └── kafka-request.yaml   # TEST template - copy this
+│   │   ├── kafka-request.yaml   # TEST template - copy this
+│   │   └── s3_bucket_full_access_policy.json
 │   ├── qa/
-│   │   └── kafka-request.yaml   # QA template - copy this
+│   │   ├── kafka-request.yaml   # QA template - copy this
+│   │   └── s3_bucket_full_access_policy.json
 │   └── prod/
-│       └── kafka-request.yaml   # PROD template - copy this
+│       ├── kafka-request.yaml   # PROD template - copy this
+│       └── s3_bucket_full_access_policy.json
 │
 ├── schemas/                      # Environment-specific schemas (optional)
 │   ├── dev/
@@ -45,10 +51,9 @@ kafkautomation/
 │       └── .gitkeep
 │
 ├── projects/                     # Developer projects (created by developers)
-│   ├── <PROJECT_NAME>/
+│   ├── <PROJECT>/
 │   │   ├── dev/
 │   │   │   ├── kafka-request.yaml
-│   │   │   └── (optional) custom-schema.avsc reference
 │   │   ├── test/
 │   │   ├── qa/
 │   │   └── prod/
@@ -57,8 +62,7 @@ kafkautomation/
 ├── terraform/
 │   ├── main.tf                  # Confluent resources (topics, schemas, acls)
 │   ├── providers.tf             # Backend (S3 state isolation by env)
-│   ├── variables.tf             # Input variable shapes
-│   └── s3_bucket_full_access_policy.json
+│   └── variables.tf             # Input variable shapes
 │
 ├── scripts/
 │   └── parser.py                # Converts YAML → JSON for Terraform
@@ -67,6 +71,11 @@ kafkautomation/
     ├── ci.yml                   # Plan on PR (environment auto-detected)
     └── cd.yml                   # Apply on merge to main (auto-approved)
 ```
+
+### Note on s3_bucket_full_access_policy policy files
+- Purpose: environment-ready example IAM policy for Terraform state backend access reviews.
+- Location: `templates/<ENV>/s3_bucket_full_access_policy.json` per environment.
+- Usage: documentation/reference only; not automatically consumed by Terraform.
 
 ## Developer Workflow
 
@@ -202,6 +211,7 @@ Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/k
 
 - `templates/*/kafka-request.yaml` — Copy these to start your project
 - `schemas/*/` — Store your Avro schemas here (environment-specific)
+- `schemas/*/` — Store all Avro schemas here (environment-specific). Do not place schema files under `projects/`.
 - `projects/<PROJECT>/<ENV>/kafka-request.yaml` — Your actual config (becomes source of truth)
 - `scripts/parser.py` — Converts YAML to JSON for Terraform (runs automatically in CI/CD)
 - `terraform/main.tf` — Defines Confluent resources (for each topic, schema, ACL)
@@ -234,12 +244,12 @@ Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/k
   - Resources use `for_each` maps keyed by topic/subject/acl id
   - Topics include `lifecycle { prevent_destroy = true }` — do not remove topics without discussion
   - Schemas use `format = "AVRO"` and load content with `file(each.value.schema_file)`
-- **Remote state:** S3 bucket `platform-engineering-terraform-state` with DynamoDB locks; environment-isolated keys
+- **Remote state:** S3 bucket `platform-engineering-terraform-state` with local lockfiles (`use_lockfile = true`); environment-isolated keys
 
 ### GitHub Actions Workflows
 - **CI (`ci.yml`):** Runs on PR for any `**/kafka-request.yaml` changes
   - Validates YAML with `yamllint`
-  - Detects environment from path (e.g., `templates/dev/` → `dev`)
+  - Detects environment from path (e.g., `<PROJECT>/dev/` → `dev`)
   - Generates tfvars and runs `terraform plan`
   - Posts plan as PR comment
 - **CD (`cd.yml`):** Runs on main merge
