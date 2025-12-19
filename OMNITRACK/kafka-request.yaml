@@ -16,3 +16,4 @@ acls:
   - principal: "User:sa-payment-producer"
     role: "DeveloperWrite"
     crn_pattern: "crn://confluent.cloud/organization=db7bf8c7-4d1d-4e84-a594-8f771fe8e13b/environment=env-ozk1yj/cluster=lkc-oj0vro/topic=payment-processed"
+    
