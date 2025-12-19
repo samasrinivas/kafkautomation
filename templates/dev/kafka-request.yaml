@@ -1,0 +1,18 @@
+service_name: "payment-service"
+environment_id: "env-ozk1yj"
+kafka_cluster_id: "lkc-oj0vro"
+rest_endpoint: "https://pkc-p11xm.us-east-1.aws.confluent.cloud:443"
+schema_registry_id: "lsrc-g7g3om"
+topics:
+  - name: "payment-processed"
+    partitions: 6
+    replication_factor: 3
+    config:
+      retention.ms: "604800000"
+schemas:
+  - subject: "payment-processed-value"
+    schema_file: "../schemas/dev/payment_event.avsc"
+acls:
+  - principal: "User:sa-payment-producer"
+    role: "DeveloperWrite"
+    crn_pattern: "crn://confluent.cloud/organization=db7bf8c7-4d1d-4e84-a594-8f771fe8e13b/environment=env-ozk1yj/cluster=lkc-oj0vro/topic=payment-processed"
