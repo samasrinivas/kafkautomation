@@ -9,6 +9,7 @@ with open(sys.argv[1],'r') as f:
 
 # Extract required Confluent Cloud variables
 tf = {
+    "organization_id": data.get('organization_id'),
     "environment_id": data.get('environment_id'),
     "kafka_cluster_id": data.get('kafka_cluster_id'),
     "rest_endpoint": data.get('rest_endpoint'),
@@ -20,7 +21,7 @@ tf = {
 }
 
 # Validate required fields
-required_fields = ['environment_id', 'kafka_cluster_id', 'rest_endpoint', 'schema_registry_id']
+required_fields = ['organization_id', 'environment_id', 'kafka_cluster_id', 'rest_endpoint', 'schema_registry_id']
 missing = [f for f in required_fields if not tf.get(f)]
 if missing:
     print(f'Error: Missing required fields in YAML: {", ".join(missing)}')
