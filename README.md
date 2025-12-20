@@ -110,7 +110,7 @@ cp templates/prod/kafka-request.yaml projects/my-service/prod/
 
 Edit `projects/my-service/dev/kafka-request.yaml`:
 - Keep `service_name` as your service name
-- Customize `topics` and `acls` for your needs
+- Customize `topics` and `access_config` for your needs
 - **The `schemas:` section is COMMENTED OUT by default** — leave it commented (Terraform will skip schema creation)
 
 Example (most services):
@@ -121,10 +121,6 @@ topics:
   - name: "my-service-events"
     partitions: 3
     replication_factor: 3
-acls:
-  - principal: "User:sa-my-service"
-    role: "DeveloperWrite"
-    # ... (do NOT change crn_pattern) ...
 
 # SCHEMAS (OPTIONAL)
 # If your service needs a schema:
@@ -227,14 +223,13 @@ git push -u origin my-service-kafka-setup
 
 ### ⚠️ Do NOT Change These Values
 - `environment_id`, `kafka_cluster_id`, `rest_endpoint`, `schema_registry_id` — These are environment-specific and locked
-- `crn_pattern` in ACLs — Contains environment/cluster/org details; do not modify
+- `organization_id` — Used to auto-generate crn_patterns; do not modify
 
 ### ✅ You CAN Change These
 - `service_name` — Use your service name
 - `topics[].name`, `topics[].partitions`, `topics[].replication_factor`
 - `topics[].config` — Retention, compression, etc.
-- `acls[].principal`, `acls[].role` — Your service account and desired permissions
-- `schemas` — Remove, add, or reference your custom schemas
+- `access_config[].name`, `access_config[].role`, `access_config[].topics` — Your service account permissions
 
 ### Terraform Plan vs Apply
 - **CI (PR):** Shows `terraform plan` (read-only preview)
@@ -273,7 +268,6 @@ Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/k
 - **Auto-generation:** 
   - `principals` built from service account IDs (resolved by Terraform)
   - `crn_patterns` auto-generated from topic names
-- **Backward compatible:** Still supports legacy `service_accounts` and `acls` sections
 - **Validation:** Ensures all referenced topics exist in the YAML
 
 ### Terraform Setup
