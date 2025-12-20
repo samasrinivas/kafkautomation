@@ -9,6 +9,16 @@ variable "confluent_api_secret" {
   sensitive = true
 }
 
+variable "kafka_api_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "kafka_api_secret" {
+  type      = string
+  sensitive = true
+}
+
 variable "organization_id" {
   type = string
 }

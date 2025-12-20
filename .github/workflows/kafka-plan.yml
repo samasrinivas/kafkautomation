@@ -53,6 +53,27 @@ jobs:
           echo "Detected environment: $ENV"
           echo "KAFKA_FILE=$file" >> $GITHUB_ENV
           echo "ENVIRONMENT=$ENV" >> $GITHUB_ENV
+          
+          # Export environment-specific Kafka API credentials
+          ENV_UPPER=$(echo "$ENV" | tr '[:lower:]' '[:upper:]')
+          KAFKA_KEY_VAR="KAFKA_API_KEY_${ENV_UPPER}"
+          KAFKA_SECRET_VAR="KAFKA_API_SECRET_${ENV_UPPER}"
+          echo "KAFKA_KEY_VAR=$KAFKA_KEY_VAR" >> $GITHUB_ENV
+          echo "KAFKA_SECRET_VAR=$KAFKA_SECRET_VAR" >> $GITHUB_ENV
+          echo "TF_VAR_kafka_api_key=${{ secrets[env.KAFKA_KEY_VAR] }}" >> $GITHUB_ENV
+          echo "TF_VAR_kafka_api_secret=${{ secrets[env.KAFKA_SECRET_VAR] }}" >> $GITHUB_ENV
+
+      - name: Validate Kafka API secrets exist
+        run: |
+          if [ -z "${{ env.TF_VAR_kafka_api_key }}" ] || [ -z "${{ env.TF_VAR_kafka_api_secret }}" ]; then
+            echo "Error: Required Kafka API secrets not found in GitHub."
+            echo "Expected secrets: ${{ env.KAFKA_KEY_VAR }} and ${{ env.KAFKA_SECRET_VAR }}"
+            echo ""
+            echo "Add them to repo settings → Secrets and variables → Actions:"
+            echo "  - ${{ env.KAFKA_KEY_VAR }} = Kafka cluster API key for ${{ env.ENVIRONMENT }} environment"
+            echo "  - ${{ env.KAFKA_SECRET_VAR }} = Kafka cluster API secret for ${{ env.ENVIRONMENT }} environment"
+            exit 1
+          fi
 
       - name: Generate tfvars from YAML
         run: |

@@ -80,6 +80,38 @@ kafkautomation/
 - Location: `templates/<ENV>/s3_bucket_full_access_policy.json` per environment.
 - Usage: documentation/reference only; not automatically consumed by Terraform.
 
+## Setup: GitHub Secrets
+
+Before the first workflow run, set up two types of API credentials in GitHub repo settings → Secrets and variables → Actions:
+
+### 1. Control-Plane Credentials (Organization-level, one set for all environments)
+- `CONFLUENT_API_KEY` — Cloud API key for service account with `EnvironmentAdmin` role
+- `CONFLUENT_API_SECRET` — Corresponding API secret
+
+**Used for:** Service account creation, role bindings, schema registry operations.
+
+### 2. Data-Plane Credentials (Per-environment, one set per Kafka cluster)
+
+Create one **Kafka cluster–scoped** API key per environment (owned by a service account like `kafka-terraform_runner`), and add:
+
+- `KAFKA_API_KEY_DEV` — Kafka cluster API key for dev cluster (lkc-oj0vro)
+- `KAFKA_API_SECRET_DEV` — Corresponding secret
+- `KAFKA_API_KEY_TEST` — Kafka cluster API key for test cluster
+- `KAFKA_API_SECRET_TEST` — Corresponding secret
+- `KAFKA_API_KEY_QA` — Kafka cluster API key for QA cluster
+- `KAFKA_API_SECRET_QA` — Corresponding secret
+- `KAFKA_API_KEY_PROD` — Kafka cluster API key for prod cluster
+- `KAFKA_API_SECRET_PROD` — Corresponding secret
+
+**Used for:** Topic creation, data-plane operations.
+
+### 3. AWS Credentials (S3 backend for Terraform state)
+- `AWS_ACCESS_KEY_ID` — AWS account access key
+- `AWS_SECRET_ACCESS_KEY` — AWS account secret key
+
+### 4. GitHub Token (Auto-stored in workflows)
+- `GITHUB_TOKEN` — Auto-provided by GitHub Actions (no manual setup needed); used for PR comments and secret storage.
+
 ## Developer Workflow
 
 ### Step 1: Create a Feature Branch
