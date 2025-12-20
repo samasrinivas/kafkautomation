@@ -18,6 +18,7 @@ topics:
 # If your service needs a schema:
 # 1. Create an Avro schema file under schemas/qa/
 # 2. Uncomment and customize the block below
+# 3. Remove the empty schemas: [] line below
 # If you don't need a schema, leave this section commented.
 #
 # schemas:
@@ -31,6 +32,8 @@ schemas: []
 # Each entry creates: 1 service account + 1+ ACLs (one per topic).
 # Terraform will auto-generate principals and crn_patterns.
 # API keys stored in GitHub secrets as CONFLUENT_<NAME>_API_KEY and CONFLUENT_<NAME>_API_SECRET
+# If you need to create service accounts and ACLs, uncomment and customize the block below 
+# and remove the empty access_config: [] line below
 #
 # access_config:
 #   - name: "payment-producer"
