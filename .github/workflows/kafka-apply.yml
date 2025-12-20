@@ -57,19 +57,13 @@ jobs:
           python scripts/parser.py "$KAFKA_FILE" terraform/terraform.tfvars.json
 
       - name: Terraform Init
-        run: terraform -chdir=terraform init \
-          -backend-config="bucket=$TF_BUCKET_STATE" \
-          -backend-config="key=terraform/${ENVIRONMENT}/data-streaming-platform.tfstate" \
-          -reconfigure
+        run: terraform -chdir=terraform init -backend-config="bucket=$TF_BUCKET_STATE" -backend-config="key=terraform/${ENVIRONMENT}/data-streaming-platform.tfstate" -reconfigure
 
       - name: Terraform Validate
         run: terraform -chdir=terraform validate
 
       - name: Terraform Plan
-        run: terraform -chdir=terraform plan -no-color -out=tfplan.bin -var-file="terraform.tfvars.json" \
-          -var="github_repo_owner=${{ github.repository_owner }}" \
-          -var="github_repo_name=${{ github.event.repository.name }}" \
-          -var="github_token=${{ secrets.GITHUB_TOKEN }}"
+        run: terraform -chdir=terraform plan -no-color -out=tfplan.bin -var-file="terraform.tfvars.json" -var="github_repo_owner=${{ github.repository_owner }}" -var="github_repo_name=${{ github.event.repository.name }}" -var="github_token=${{ secrets.GITHUB_TOKEN }}"
 
       - name: Terraform Apply
         run: terraform -chdir=terraform apply -no-color -auto-approve tfplan.bin \
