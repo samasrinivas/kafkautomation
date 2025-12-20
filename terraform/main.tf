@@ -18,9 +18,7 @@ resource "confluent_schema" "schemas" {
 
 resource "confluent_role_binding" "acls" {
   for_each    = var.acls
-  
-  # Resolve principal: either use provided principal or look up service account ID
-  principal   = contains(keys(each.value), "service_account_key") ? "User:${confluent_service_account.service_accounts[each.value.service_account_key].id}" : each.value.principal
+  principal   = "User:${confluent_service_account.service_accounts[each.value.service_account_key].id}"
   role_name   = each.value.role
   crn_pattern = each.value.crn_pattern
 }

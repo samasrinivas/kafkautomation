@@ -47,10 +47,9 @@ variable "schemas" {
 
 variable "acls" {
   type = map(object({
-    role           = string
-    crn_pattern    = optional(string)
-    principal      = optional(string)              # Hardcoded principal (legacy)
-    service_account_key = optional(string)         # Service account key (from parser)
+    role                = string
+    crn_pattern         = string
+    service_account_key = string
   }))
   default     = {}
   description = "ACLs generated from access_config entries. Parser creates one ACL per topic per access_config entry."
