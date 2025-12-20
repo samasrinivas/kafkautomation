@@ -3,10 +3,11 @@
 # Contact the platform team if you need to update any of these values.
 
 service_name: "payment-service"
-environment_id: "env-ozk1yj"
-kafka_cluster_id: "lkc-oj0vro"
-rest_endpoint: "https://pkc-p11xm.us-east-1.aws.confluent.cloud:443"
-schema_registry_id: "lsrc-g7g3om"
+organization_id: "db7bf8c7-4d1d-4e84-a594-8f771fe8e13b"
+environment_id: "env-ozk1yj" # TEST environment - do not change
+kafka_cluster_id: "lkc-oj0vro" # TEST cluster - do not change
+rest_endpoint: "https://pkc-p11xm.us-east-1.aws.confluent.cloud:443" # TEST REST endpoint - do not change
+schema_registry_id: "lsrc-g7g3om" # TEST schema registry - do not change
 topics:
   - name: "payment-processed"
     partitions: 6
@@ -22,10 +23,23 @@ topics:
 # schemas:
 #   - subject: "my-service-events-value"
 #     schema_file: "schemas/test/my-service-schema.avsc"
-acls:
-  - principal: "User:sa-payment-producer"
-    role: "DeveloperWrite"
-    # ⚠️  IMPORTANT: Do NOT change the crn_pattern below.
-    # It contains environment-specific values (organization, environment, cluster IDs) that are TEST-specific.
-    # Contact the platform team if you need to update the crn_pattern.
-    crn_pattern: "crn://confluent.cloud/organization=db7bf8c7-4d1d-4e84-a594-8f771fe8e13b/environment=env-ozk1yj/cluster=lkc-oj0vro/topic=payment-processed"
+
+# ACCESS CONFIGURATION (OPTIONAL)
+# Define service accounts with their permissions in one shot.
+# Each entry creates: 1 service account + 1+ ACLs (one per topic).
+# Terraform will auto-generate principals and crn_patterns.
+# API keys stored in GitHub secrets as CONFLUENT_<NAME>_API_KEY and CONFLUENT_<NAME>_API_SECRET
+#
+# access_config:
+#   - name: "payment-producer"
+#     description: "Producer for payment events"
+#     role: "DeveloperWrite"
+#     topics:
+#       - "payment-processed"
+#   - name: "payment-consumer"
+#     description: "Consumer for payment events"
+#     role: "DeveloperRead"
+#     topics:
+#       - "payment-processed"
+
+access_config: []

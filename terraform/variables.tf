@@ -9,6 +9,10 @@ variable "confluent_api_secret" {
   sensitive = true
 }
 
+variable "organization_id" {
+  type = string
+}
+
 variable "environment_id" {
   type = string
 }
@@ -43,8 +47,38 @@ variable "schemas" {
 
 variable "acls" {
   type = map(object({
-    principal   = string
-    role        = string
-    crn_pattern = string
+    role           = string
+    crn_pattern    = optional(string)
+    principal      = optional(string)              # Hardcoded principal (legacy)
+    service_account_key = optional(string)         # Service account key (from parser)
   }))
+  default     = {}
+  description = "ACLs generated from access_config entries. Parser creates one ACL per topic per access_config entry."
+}
+
+variable "service_accounts" {
+  type = map(object({
+    display_name = string
+    description  = string
+  }))
+  default = {}
+}
+
+variable "github_repo_owner" {
+  type        = string
+  description = "GitHub repository owner for storing secrets"
+  default     = ""
+}
+
+variable "github_repo_name" {
+  type        = string
+  description = "GitHub repository name for storing secrets"
+  default     = ""
+}
+
+variable "github_token" {
+  type        = string
+  sensitive   = true
+  description = "GitHub PAT with repo scope for creating secrets"
+  default     = ""
 }

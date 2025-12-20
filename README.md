@@ -163,6 +163,46 @@ acls:
 
 3. Repeat for test, qa, prod in their respective `schemas/<ENV>/` folders.
 
+### Step 4c: If You Need Service Accounts & ACLs (Optional)
+
+Define service accounts with their permissions in one unified section. Each entry creates one service account + one ACL per topic.
+
+```yaml
+topics:
+  - name: "payment-processed"
+    partitions: 6
+    replication_factor: 3
+  - name: "payment-events"
+    partitions: 3
+    replication_factor: 3
+
+access_config:
+  - name: "payment-producer"
+    description: "Producer for payment events"
+    role: "DeveloperWrite"
+    topics:
+      - "payment-processed"
+      - "payment-events"
+  - name: "payment-consumer"
+    description: "Consumer for payment events"
+    role: "DeveloperRead"
+    topics:
+      - "payment-processed"
+```
+
+Terraform will automatically:
+- Create service accounts from each `access_config` entry
+- Generate Kafka API keys and store in GitHub secrets
+- Build ACL principals from service account IDs (e.g., `User:sa-abc123def456`)
+- Build crn_patterns for each topic referenced
+- Apply all ACLs to the Kafka cluster
+
+**Result:** 2 service accounts + 3 ACLs (1 producer with 2 topic permissions, 1 consumer with 1 topic permission)
+
+API keys are stored in GitHub secrets as:
+- `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_KEY` (e.g., `CONFLUENT_PAYMENT_PRODUCER_API_KEY`)
+- `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_SECRET` (e.g., `CONFLUENT_PAYMENT_PRODUCER_API_SECRET`)
+
 ### Step 5: Commit and Create PR
 ```bash
 git add projects/
@@ -172,7 +212,7 @@ git push -u origin my-service-kafka-setup
 ```
 
 ### Step 6: CI Runs Automatically
-- GitHub Actions detects `projects/<PROJECT>/<ENV>/kafka-request.yaml`
+- GitHub Actions detects `projects/<PROJECT>/<ENV>/kafka-request.yaml` or `schemas/**` changes
 - CI validates YAML, lints it, generates tfvars, and runs `terraform plan`
 - Plan appears as PR comment for review
 
@@ -181,6 +221,7 @@ git push -u origin my-service-kafka-setup
 - CD workflow runs automatically
 - Terraform applies changes to the corresponding environment
 - Kafka topics, schemas, and ACLs are created in Confluent Cloud
+- **If service accounts were defined:** API keys are automatically generated and stored in GitHub secrets with names like `CONFLUENT_<NAME>_API_KEY` and `CONFLUENT_<NAME>_API_SECRET`
 
 ## Important Notes
 
@@ -213,7 +254,6 @@ Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/k
 ## Key Files and Their Purpose
 
 - `templates/*/kafka-request.yaml` — Copy these to start your project
-- `schemas/*/` — Store your Avro schemas here (environment-specific)
 - `schemas/*/` — Store all Avro schemas here (environment-specific). Do not place schema files under `projects/`.
 - `projects/<PROJECT>/<ENV>/kafka-request.yaml` — Your actual config (becomes source of truth)
 - `scripts/parser.py` — Converts YAML to JSON for Terraform (runs automatically in CI/CD)
@@ -227,27 +267,40 @@ Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/k
 ### Parser (`scripts/parser.py`)
 - **Purpose:** Deterministic converter from `kafka-request.yaml` to JSON for Terraform
 - **Command:** `python scripts/parser.py <input-yaml> <output-json>`
-- **Output shape:**
-  ```json
-  {
-    "environment_id": "...",
-    "kafka_cluster_id": "...",
-    "rest_endpoint": "...",
-    "schema_registry_id": "...",
-    "topics": { "topic-name": { "partitions": 3, "replication_factor": 3, "config": {} } },
-    "schemas": { "subject": { "subject": "...", "schema_file": "..." } },
-    "acls": { "acl_0": { "principal": "...", "role": "...", "crn_pattern": "..." } }
-  }
-  ```
-- **Validation:** Checks that all required Confluent fields are present; validates schema file existence before output
+- **Key feature:** Unified `access_config` structure creates N service accounts + M ACLs
+  - Each `access_config` entry generates: 1 service account + (1 ACL per topic listed)
+  - Example: 2 entries with 3 topics total = 2 service accounts + 3 ACLs
+- **Auto-generation:** 
+  - `principals` built from service account IDs (resolved by Terraform)
+  - `crn_patterns` auto-generated from topic names
+- **Backward compatible:** Still supports legacy `service_accounts` and `acls` sections
+- **Validation:** Ensures all referenced topics exist in the YAML
 
 ### Terraform Setup
 - **Requirements:** Terraform >= 1.3.0 and `confluentinc/confluent` provider (~> 2.55)
 - **Key patterns:**
-  - Resources use `for_each` maps keyed by topic/subject/acl id
+  - Resources use `for_each` maps keyed by topic/subject/acl/service-account id
   - Topics include `lifecycle { prevent_destroy = true }` — do not remove topics without discussion
   - Schemas use `format = "AVRO"` and load content with `file(each.value.schema_file)`
+  - Service accounts auto-generate API keys and store credentials in GitHub secrets
 - **Remote state:** S3 bucket `platform-engineering-terraform-state` with local lockfiles (`use_lockfile = true`); environment-isolated keys
+
+### Service Account & API Key Provisioning
+- **Terraform creates:**
+  - `confluent_service_account` resources from YAML definitions
+  - `confluent_api_key` for each service account (Kafka cluster access)
+  - Automatically stores API keys in GitHub secrets via `null_resource` + GitHub CLI
+- **Secret naming convention:** `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_KEY` and `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_SECRET`
+- **Output:** Terraform outputs service account IDs and corresponding GitHub secret names for reference
+- **Example:** Service account name `payment-producer` → secrets `CONFLUENT_PAYMENT_PRODUCER_API_KEY` and `CONFLUENT_PAYMENT_PRODUCER_API_SECRET`
+
+### Unified Access Configuration Workflow
+- **Single section:** `access_config` replaces separate `service_accounts` and `acls`
+- **Developer intent:** "This service account needs this role on these topics"
+- **One-to-many relationship:** 1 entry → 1 service account + N ACLs (one per topic)
+- **Auto-generation:** Principals and crn_patterns generated from service account IDs and topic names
+- **Flexibility:** Multiple topics per service account, multiple roles possible by creating multiple entries
+- **Example:** 2 service accounts × 3 topics = 2 service accounts + 3 ACLs automatically created
 
 ### GitHub Actions Workflows
 - **CI (`kafka-plan.yml`):** Runs on PR for any `**/kafka-request.yaml` or `schemas/**` changes
@@ -277,6 +330,17 @@ Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/k
 - Edit `topics:` section in your kafka-request.yaml
 - Leave `schemas:` unchanged or remove it entirely
 - Commit and push
+
+**Service account API keys not showing in GitHub secrets:**
+- Ensure `GITHUB_TOKEN` has write permissions to secrets (it does by default in GitHub Actions)
+- Check GitHub Actions workflow logs for errors during `terraform apply`
+- Verify service account names are valid (alphanumeric, hyphens)
+- Secrets are stored as `CONFLUENT_<UPPER_NAME>_API_KEY` and `CONFLUENT_<UPPER_NAME>_API_SECRET`
+
+**How to use generated service account credentials:**
+- After CD completes, check GitHub repository Settings → Secrets and variables → Actions
+- Find your service account secrets (e.g., `CONFLUENT_PAYMENT_PRODUCER_API_KEY`)
+- Reference in your workflows with `${{ secrets.CONFLUENT_PAYMENT_PRODUCER_API_KEY }}`
 
 ## Questions?
 
