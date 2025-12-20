@@ -24,6 +24,8 @@ topics:
 #   - subject: "my-service-events-value"
 #     schema_file: "schemas/qa/my-service-schema.avsc"
 
+schemas: []
+
 # ACCESS CONFIGURATION (OPTIONAL)
 # Define service accounts with their permissions in one shot.
 # Each entry creates: 1 service account + 1+ ACLs (one per topic).
