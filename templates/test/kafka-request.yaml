@@ -32,7 +32,7 @@ schemas: []
 # Each entry creates: 1 service account + 1+ ACLs (one per topic).
 # Terraform will auto-generate principals and crn_patterns.
 # API keys stored in GitHub secrets as CONFLUENT_<NAME>_API_KEY and CONFLUENT_<NAME>_API_SECRET
-# If you need to create service accounts and ACLs, uncomment and customize the block below 
+# If you need to create service accounts and ACLs, uncomment and customize the block below
 # and remove the empty access_config: [] line below
 #
 # access_config:
