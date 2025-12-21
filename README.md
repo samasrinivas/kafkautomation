@@ -9,14 +9,14 @@ This repo automates Confluent Kafka resource provisioning through Git, providing
 **How it works:**
 1. Create a feature branch named after your project.
 2. Create project folders under `projects/<PROJECT>/<ENV>/` (dev/test/qa/prod).
-3. Copy the environment template `templates/<ENV>/kafka-request.yaml` into your project folder.
+3. Copy the generic template `templates/kafka-request.yaml` into your project folder.
 4. Schemas are optional. If needed, add Avro files under `schemas/<ENV>/` and reference them in `kafka-request.yaml`; otherwise, leave the `schemas:` section commented.
 5. CI runs on PR: lints YAML, converts to Terraform variables, auto-detects the environment from the file path, initializes Terraform with the per-environment backend key, and posts the plan as a PR comment.
 6. On merge to `main`, CD applies the plan with environment-specific settings. If schemas were omitted, no schema resources are created.
 7. Confluent resources are provisioned in the correct environment with isolated Terraform state (S3 key per environment).
 
 **YAML → Terraform flow:**
-- Author `projects/<PROJECT>/<ENV>/kafka-request.yaml` using the matching template; keep environment values unchanged.
+- Author `projects/<PROJECT>/<ENV>/kafka-request.yaml` using the template; do not add Confluent environment metadata in YAML.
 - Store any schema files under `schemas/<ENV>/...` and reference them via `schema_file` paths; leave the `schemas:` section commented if not needed.
 - `scripts/parser.py` converts YAML to JSON and validates schema file existence.
 - Workflows detect environment from path and set Terraform backend `key` per environment.
@@ -26,19 +26,9 @@ This repo automates Confluent Kafka resource provisioning through Git, providing
 
 ```
 kafkautomation/
-├── templates/                    # Environment templates (reference only)
-│   ├── dev/
-│   │   ├── kafka-request.yaml   # DEV template - copy this
-│   │   └── s3_bucket_full_access_policy.json
-│   ├── test/
-│   │   ├── kafka-request.yaml   # TEST template - copy this
-│   │   └── s3_bucket_full_access_policy.json
-│   ├── qa/
-│   │   ├── kafka-request.yaml   # QA template - copy this
-│   │   └── s3_bucket_full_access_policy.json
-│   └── prod/
-│       ├── kafka-request.yaml   # PROD template - copy this
-│       └── s3_bucket_full_access_policy.json
+├── templates/
+│   ├── kafka-request.yaml        # Single generic template to copy
+│   └── s3_bucket_full_access_policy.json
 │
 ├── schemas/                      # Environment-specific schemas (optional)
 │   ├── dev/
@@ -75,9 +65,9 @@ kafkautomation/
     └── kafka-apply.yml          # Apply on merge to main (auto-approved)
 ```
 
-### Note on s3_bucket_full_access_policy policy files
-- Purpose: environment-ready example IAM policy for Terraform state backend access reviews.
-- Location: `templates/<ENV>/s3_bucket_full_access_policy.json` per environment.
+### Note on s3_bucket_full_access_policy
+- Purpose: example IAM policy for Terraform state backend access reviews.
+- Location: `terraform/policies/s3_bucket_full_access_policy.json`.
 - Usage: documentation/reference only; not automatically consumed by Terraform.
 
 ## Setup: GitHub Secrets
@@ -121,6 +111,18 @@ Create one **Kafka cluster–scoped** API key per environment (owned by a servic
 ### 4. GitHub Token (Auto-stored in workflows)
 - `GITHUB_TOKEN` — Auto-provided by GitHub Actions (no manual setup needed); used for PR comments and secret storage.
 
+## Setup Checklist
+
+Before using the workflows, ensure the following are set up. The CI/CD pipelines validate these and will fail early if any are missing.
+
+- GitHub Environments: Create `dev`, `test`, `qa`, `prod` environments.
+- Environment Variables (per environment): `ORGANIZATION_ID`, `ENVIRONMENT_ID`, `KAFKA_CLUSTER_ID`, `REST_ENDPOINT`, `SCHEMA_REGISTRY_ID`.
+- Environment Secrets (per environment): `CONFLUENT_API_KEY`, `CONFLUENT_API_SECRET`, `KAFKA_API_KEY`, `KAFKA_API_SECRET`.
+- Repository Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+- Repository Variables: `AWS_REGION` (e.g., `us-east-1`), `TF_BUCKET_STATE` (e.g., `platform-engineering-terraform-state`).
+
+Workflows include validation steps for AWS settings (secrets and variables) and will exit with a helpful message if they’re not configured.
+
 ## Developer Workflow
 
 ### Step 1: Create a Feature Branch
@@ -138,13 +140,11 @@ mkdir -p projects/my-service/prod
 
 ### Step 3: Copy Templates
 ```bash
-# Copy dev template to your project
-cp templates/dev/kafka-request.yaml projects/my-service/dev/
-
-# Repeat for test, qa, prod
-cp templates/test/kafka-request.yaml projects/my-service/test/
-cp templates/qa/kafka-request.yaml projects/my-service/qa/
-cp templates/prod/kafka-request.yaml projects/my-service/prod/
+# Copy template to your project (repeat for each env)
+cp templates/kafka-request.yaml projects/my-service/dev/
+cp templates/kafka-request.yaml projects/my-service/test/
+cp templates/kafka-request.yaml projects/my-service/qa/
+cp templates/kafka-request.yaml projects/my-service/prod/
 ```
 
 ### Step 4a: If You Don't Need a Schema (Minimal)
@@ -262,9 +262,10 @@ git push -u origin my-service-kafka-setup
 
 ## Important Notes
 
-### ⚠️ Do NOT Change These Values
-- `environment_id`, `kafka_cluster_id`, `rest_endpoint`, `schema_registry_id` — These are environment-specific and locked
-- `organization_id` — Used to auto-generate crn_patterns; do not modify
+### ⚠️ Parser Uses Environment Variables Only
+- The parser reads Confluent metadata exclusively from GitHub Environment variables, not from YAML.
+- Required environment variables (set per GitHub Environment): `ORGANIZATION_ID`, `ENVIRONMENT_ID`, `KAFKA_CLUSTER_ID`, `REST_ENDPOINT`, `SCHEMA_REGISTRY_ID`.
+- YAML fields for these values are ignored.
 
 ### ✅ You CAN Change These
 - `service_name` — Use your service name
@@ -277,26 +278,24 @@ git push -u origin my-service-kafka-setup
 - **CD (main):** Runs `terraform apply -auto-approve` (actual infrastructure changes)
 
 ### Environment Isolation
-- Dev state: `s3://platform-engineering-terraform-state/terraform/dev/...`
-- Test state: `s3://platform-engineering-terraform-state/terraform/test/...`
-- QA state: `s3://platform-engineering-terraform-state/terraform/qa/...`
-- Prod state: `s3://platform-engineering-terraform-state/terraform/prod/...`
+- State key pattern: `s3://$TF_BUCKET_STATE/terraform/<PROJECT>/<ENV>/data-streaming-platform.tfstate`
+- Example (project `payments`, env `dev`): `s3://$TF_BUCKET_STATE/terraform/payments/dev/data-streaming-platform.tfstate`
 
-Each environment has its own isolated Terraform state file (no cross-environment interference).
+Each project+environment pair has its own isolated Terraform state file (no cross-project or cross-environment interference).
 
 ### Multiple Environments in One Commit?
 Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/kafka-request.yaml`). If you need to update multiple environments, create separate PRs per environment to maintain clean audit trails and allow environment-specific reviews.
 
 ## Key Files and Their Purpose
 
-- `templates/*/kafka-request.yaml` — Copy these to start your project
+- `templates/kafka-request.yaml` — Single template to copy; env/cluster IDs come from GitHub Environment variables
 - `schemas/*/` — Store all Avro schemas here (environment-specific). Do not place schema files under `projects/`.
 - `projects/<PROJECT>/<ENV>/kafka-request.yaml` — Your actual config (becomes source of truth)
 - `scripts/parser.py` — Converts YAML to JSON for Terraform (runs automatically in CI/CD)
 - `terraform/main.tf` — Defines Confluent resources (for each topic, schema, ACL)
 - `terraform/providers.tf` — Backend config (S3 state, environment-isolated keys)
-- `.github/workflows/kafka-plan.yml` — Plan workflow (PR validation)
-- `.github/workflows/kafka-apply.yml` — Apply workflow (main merge automation)
+- `.github/workflows/kafka-plan.yml` — Plan workflow (PR validation; detects project/env from path; backend key per project+env)
+- `.github/workflows/kafka-apply.yml` — Apply workflow (main merge automation; backend key per project+env)
 
 ## Technical Details
 
@@ -318,7 +317,24 @@ Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/k
   - Topics include `lifecycle { prevent_destroy = true }` — do not remove topics without discussion
   - Schemas use `format = "AVRO"` and load content with `file(each.value.schema_file)`
   - Service accounts auto-generate API keys and store credentials in GitHub secrets
-- **Remote state:** S3 bucket `platform-engineering-terraform-state` with local lockfiles (`use_lockfile = true`); environment-isolated keys
+- **Remote state:** S3 backend configured via workflow `-backend-config` using `TF_BUCKET_STATE` and `AWS_REGION`; keys are scoped per `<PROJECT>/<ENV>`
+
+### Secrets and Variables (GitHub Actions)
+- Environment-scoped secrets (per env: dev/test/qa/prod): `CONFLUENT_API_KEY`, `CONFLUENT_API_SECRET`, `KAFKA_API_KEY`, `KAFKA_API_SECRET`
+- Repository-level secrets (current): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+- Repository-level variables:
+  - `AWS_REGION` (example: `us-east-1`)
+  - `TF_BUCKET_STATE` (example: `platform-engineering-terraform-state`)
+- Workflows detect `PROJECT` and `ENV` from `projects/<PROJECT>/<ENV>/kafka-request.yaml` and set backend key to `terraform/<PROJECT>/<ENV>/data-streaming-platform.tfstate`
+
+Environment-scoped variables (set per GitHub Environment: dev/test/qa/prod):
+- `ORGANIZATION_ID`
+- `ENVIRONMENT_ID`
+- `KAFKA_CLUSTER_ID`
+- `REST_ENDPOINT`
+- `SCHEMA_REGISTRY_ID`
+
+These are mandatory for parser execution and must be defined in the GitHub Environment. Do not include these in YAML; the parser validates they are set and will error if any are missing.
 
 ### Service Account & API Key Provisioning
 - **Terraform creates:**

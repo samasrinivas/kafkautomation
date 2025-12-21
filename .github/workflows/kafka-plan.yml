@@ -8,118 +8,109 @@ on:
       - 'schemas/**'
 
 jobs:
-  plan:
+  detect:
     runs-on: ubuntu-latest
-
+    outputs:
+      env: ${{ steps.pick.outputs.env }}
+      file: ${{ steps.pick.outputs.file }}
+      project: ${{ steps.pick.outputs.project }}
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Verify AWS identity
-        run: aws sts get-caller-identity
-
-      - name: Export global variables to env
-        run: |
-          echo "TF_BUCKET_STATE=${{ vars.TF_BUCKET_STATE }}" >> $GITHUB_ENV
-
-      - name: Lint kafka-request.yaml
-        run: |
-          pip install yamllint
-          yamllint $(git ls-files '*kafka-request.yaml')
-
-      - name: Detect environment and set Kafka credentials
+      - name: Detect environment from kafka-request.yaml
+        id: pick
         run: |
           file=$(git ls-files '*kafka-request.yaml' | head -n1)
           if [ -z "$file" ]; then
             echo "No kafka-request.yaml found in repository" >&2
             exit 1
           fi
-          # Extract environment from path: projects/<PROJECT>/<ENV>/kafka-request.yaml
-          ENV=$(echo "$file" | cut -d'/' -f3)
-          if [ -z "$ENV" ] || [ "$ENV" = "kafka-request.yaml" ]; then
+          env_name=$(echo "$file" | cut -d'/' -f3)
+          project_name=$(echo "$file" | cut -d'/' -f2)
+          if [ -z "$env_name" ] || [ "$env_name" = "kafka-request.yaml" ]; then
             echo "Error: Could not extract environment from path: $file" >&2
             exit 1
           fi
-          echo "Found kafka-request.yaml: $file"
-          echo "Detected environment: $ENV"
-          echo "KAFKA_FILE=$file" >> $GITHUB_ENV
-          echo "ENVIRONMENT=$ENV" >> $GITHUB_ENV
-          
-          # Set Kafka credentials based on environment
-          case "$ENV" in
-            dev)
-              echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY_DEV }}" >> $GITHUB_ENV
-              echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET_DEV }}" >> $GITHUB_ENV
-              echo "TF_VAR_kafka_api_key=${{ secrets.KAFKA_API_KEY_DEV }}" >> $GITHUB_ENV
-              echo "TF_VAR_kafka_api_secret=${{ secrets.KAFKA_API_SECRET_DEV }}" >> $GITHUB_ENV
-              echo "CONFLUENT_KEY_VAR=CONFLUENT_API_KEY_DEV" >> $GITHUB_ENV
-              echo "CONFLUENT_SECRET_VAR=CONFLUENT_API_SECRET_DEV" >> $GITHUB_ENV
-              echo "KAFKA_KEY_VAR=KAFKA_API_KEY_DEV" >> $GITHUB_ENV
-              echo "KAFKA_SECRET_VAR=KAFKA_API_SECRET_DEV" >> $GITHUB_ENV
-              ;;
-            test)
-              echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY_TEST }}" >> $GITHUB_ENV
-              echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET_TEST }}" >> $GITHUB_ENV
-              echo "TF_VAR_kafka_api_key=${{ secrets.KAFKA_API_KEY_TEST }}" >> $GITHUB_ENV
-              echo "TF_VAR_kafka_api_secret=${{ secrets.KAFKA_API_SECRET_TEST }}" >> $GITHUB_ENV
-              echo "CONFLUENT_KEY_VAR=CONFLUENT_API_KEY_TEST" >> $GITHUB_ENV
-              echo "CONFLUENT_SECRET_VAR=CONFLUENT_API_SECRET_TEST" >> $GITHUB_ENV
-              echo "KAFKA_KEY_VAR=KAFKA_API_KEY_TEST" >> $GITHUB_ENV
-              echo "KAFKA_SECRET_VAR=KAFKA_API_SECRET_TEST" >> $GITHUB_ENV
-              ;;
-            qa)
-              echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY_QA }}" >> $GITHUB_ENV
-              echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET_QA }}" >> $GITHUB_ENV
-              echo "TF_VAR_kafka_api_key=${{ secrets.KAFKA_API_KEY_QA }}" >> $GITHUB_ENV
-              echo "TF_VAR_kafka_api_secret=${{ secrets.KAFKA_API_SECRET_QA }}" >> $GITHUB_ENV
-              echo "CONFLUENT_KEY_VAR=CONFLUENT_API_KEY_QA" >> $GITHUB_ENV
-              echo "CONFLUENT_SECRET_VAR=CONFLUENT_API_SECRET_QA" >> $GITHUB_ENV
-              echo "KAFKA_KEY_VAR=KAFKA_API_KEY_QA" >> $GITHUB_ENV
-              echo "KAFKA_SECRET_VAR=KAFKA_API_SECRET_QA" >> $GITHUB_ENV
-              ;;
-            prod)
-              echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY_PROD }}" >> $GITHUB_ENV
-              echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET_PROD }}" >> $GITHUB_ENV
-              echo "TF_VAR_kafka_api_key=${{ secrets.KAFKA_API_KEY_PROD }}" >> $GITHUB_ENV
-              echo "TF_VAR_kafka_api_secret=${{ secrets.KAFKA_API_SECRET_PROD }}" >> $GITHUB_ENV
-              echo "CONFLUENT_KEY_VAR=CONFLUENT_API_KEY_PROD" >> $GITHUB_ENV
-              echo "CONFLUENT_SECRET_VAR=CONFLUENT_API_SECRET_PROD" >> $GITHUB_ENV
-              echo "KAFKA_KEY_VAR=KAFKA_API_KEY_PROD" >> $GITHUB_ENV
-              echo "KAFKA_SECRET_VAR=KAFKA_API_SECRET_PROD" >> $GITHUB_ENV
-              ;;
-            *)
-              echo "Error: Unknown environment: $ENV"
-              exit 1
-              ;;
-          esac
+          if [ -z "$project_name" ]; then
+            echo "Error: Could not extract project from path: $file" >&2
+            exit 1
+          fi
+          {
+            echo "env=$env_name"
+            echo "file=$file"
+            echo "project=$project_name"
+          } >> "$GITHUB_OUTPUT"
+
+  plan:
+    needs: [detect]
+    environment: ${{ needs.detect.outputs.env }}
+    runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: ${{ needs.detect.outputs.env }}
+      KAFKA_FILE: ${{ needs.detect.outputs.file }}
+      PROJECT: ${{ needs.detect.outputs.project }}
+      TF_VAR_confluent_api_key: ${{ secrets.CONFLUENT_API_KEY }}
+      TF_VAR_confluent_api_secret: ${{ secrets.CONFLUENT_API_SECRET }}
+      TF_VAR_kafka_api_key: ${{ secrets.KAFKA_API_KEY }}
+      TF_VAR_kafka_api_secret: ${{ secrets.KAFKA_API_SECRET }}
+      ORGANIZATION_ID: ${{ vars.ORGANIZATION_ID }}
+      ENVIRONMENT_ID: ${{ vars.ENVIRONMENT_ID }}
+      KAFKA_CLUSTER_ID: ${{ vars.KAFKA_CLUSTER_ID }}
+      REST_ENDPOINT: ${{ vars.REST_ENDPOINT }}
+      SCHEMA_REGISTRY_ID: ${{ vars.SCHEMA_REGISTRY_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Validate AWS settings exist
+        run: |
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] || [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+            echo "Error: Missing AWS secrets AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY."
+            echo "Define repository-level secrets under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          if [ -z "${{ vars.AWS_REGION }}" ]; then
+            echo "Error: Missing repository variable AWS_REGION."
+            echo "Define repository-level variable AWS_REGION under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          if [ -z "${{ vars.TF_BUCKET_STATE }}" ]; then
+            echo "Error: Missing repository variable TF_BUCKET_STATE."
+            echo "Define repository-level variable TF_BUCKET_STATE under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: "${{ secrets.AWS_ACCESS_KEY_ID }}"
+          aws-secret-access-key: "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          aws-region: "${{ vars.AWS_REGION }}"
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Export global variables to env
+        run: |
+          echo "TF_BUCKET_STATE=${{ vars.TF_BUCKET_STATE }}" >> "$GITHUB_ENV"
 
       - name: Validate API secrets exist
         run: |
           if [ -z "$TF_VAR_confluent_api_key" ] || [ -z "$TF_VAR_confluent_api_secret" ]; then
-            echo "Error: Required Confluent Cloud API secrets not found in GitHub."
-            echo "Expected secrets: $CONFLUENT_KEY_VAR and $CONFLUENT_SECRET_VAR"
-            echo ""
-            echo "Add them to repo settings → Secrets and variables → Actions:"
-            echo "  - $CONFLUENT_KEY_VAR = Confluent Cloud API key for $ENVIRONMENT environment"
-            echo "  - $CONFLUENT_SECRET_VAR = Confluent Cloud API secret for $ENVIRONMENT environment"
+            echo "Error: Confluent Cloud API secrets missing for environment $ENVIRONMENT."
+            echo "Define environment-scoped secrets CONFLUENT_API_KEY and CONFLUENT_API_SECRET under Settings → Environments → $ENVIRONMENT."
             exit 1
           fi
           if [ -z "$TF_VAR_kafka_api_key" ] || [ -z "$TF_VAR_kafka_api_secret" ]; then
-            echo "Error: Required Kafka API secrets not found in GitHub."
-            echo "Expected secrets: $KAFKA_KEY_VAR and $KAFKA_SECRET_VAR"
-            echo ""
-            echo "Add them to repo settings → Secrets and variables → Actions:"
-            echo "  - $KAFKA_KEY_VAR = Kafka cluster API key for $ENVIRONMENT environment"
-            echo "  - $KAFKA_SECRET_VAR = Kafka cluster API secret for $ENVIRONMENT environment"
+            echo "Error: Kafka API secrets missing for environment $ENVIRONMENT."
+            echo "Define environment-scoped secrets KAFKA_API_KEY and KAFKA_API_SECRET under Settings → Environments → $ENVIRONMENT."
             exit 1
           fi
+
+      - name: Lint kafka-request.yaml
+        run: |
+          pip install yamllint
+          yamllint "$KAFKA_FILE"
 
       - name: Generate tfvars from YAML
         run: |
@@ -129,7 +120,7 @@ jobs:
           python scripts/parser.py "$KAFKA_FILE" terraform/terraform.tfvars.json
 
       - name: Terraform Init
-        run: terraform -chdir=terraform init -backend-config="key=terraform/${ENVIRONMENT}/data-streaming-platform.tfstate" -backend-config="bucket=$TF_BUCKET_STATE" -reconfigure
+        run: terraform -chdir=terraform init -backend-config="key=terraform/${PROJECT}/${ENVIRONMENT}/data-streaming-platform.tfstate" -backend-config="bucket=$TF_BUCKET_STATE" -backend-config="region=$AWS_REGION" -reconfigure
 
       - name: Terraform validate
         run: terraform -chdir=terraform validate
@@ -149,9 +140,9 @@ jobs:
         run: terraform -chdir=terraform show -no-color tfplan.bin > terraform/plan.txt
         
       - name: Post plan as PR comment
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
           script: |
             const fs = require('fs');
             const plan = fs.readFileSync('terraform/plan.txt', 'utf8');
