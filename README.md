@@ -9,10 +9,11 @@ This repo automates Confluent Kafka resource provisioning through Git, providing
 **How it works:**
 1. Create a feature branch named after your project.
 2. Add/update one file: `projects/<PROJECT>/<ENV>/kafka-request.yaml` (dev/test/qa/prod) using `templates/kafka-request.yaml`.
-3. (Optional) Add Avro schemas under `schemas/<ENV>/...` and reference them in `kafka-request.yaml`.
-4. Open a PR: CI lints YAML, converts to tfvars via `scripts/parser.py` (metadata comes from GitHub Environment vars), detects `<ENV>` from the path, initializes Terraform with a project+env state key, and posts the plan as a PR comment.
-5. Merge to `main`: CD reuses the detected env, runs Terraform apply with the same backend key, and provisions topics/schemas/ACLs. If schemas are absent, none are created.
-6. State is isolated per project and environment: `terraform/<PROJECT>/<ENV>/data-streaming-platform.tfstate` in the S3 bucket provided by `TF_BUCKET_STATE`.
+3. Define your topics and optionally `access_config` entries (service accounts + ACLs) and schemas in the YAML.
+4. (Optional) Add Avro schemas under `schemas/<ENV>/...` and reference them in `kafka-request.yaml`.
+5. Open a PR: CI lints YAML, converts to tfvars via `scripts/parser.py` (metadata comes from GitHub Environment vars), detects `<ENV>` from the path, initializes Terraform with a project+env state key, and posts the plan as a PR comment.
+6. Merge to `main`: CD reuses the detected env, runs Terraform apply with the same backend key, and provisions topics, service accounts (with Kafka API keys), ACLs, and schemas. API keys are stored as GitHub secrets.
+7. State is isolated per project and environment: `terraform/<PROJECT>/<ENV>/data-streaming-platform.tfstate` in the S3 bucket provided by `TF_BUCKET_STATE`.
 
 **YAML → Terraform flow:**
 - Author `projects/<PROJECT>/<ENV>/kafka-request.yaml` using the template; Confluent metadata must come from GitHub Environment variables (not YAML).
@@ -217,16 +218,18 @@ access_config:
 
 Terraform will automatically:
 - Create service accounts from each `access_config` entry
-- Generate Kafka API keys and store in GitHub secrets
+- Generate Kafka API keys and store in **environment-scoped** GitHub secrets
 - Build ACL principals from service account IDs (e.g., `User:sa-abc123def456`)
 - Build crn_patterns for each topic referenced
 - Apply all ACLs to the Kafka cluster
 
 **Result:** 2 service accounts + 3 ACLs (1 producer with 2 topic permissions, 1 consumer with 1 topic permission)
 
-API keys are stored in GitHub secrets as:
+API keys are stored as **environment-scoped secrets** under Settings → Environments → `<ENV>` → Secrets:
 - `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_KEY` (e.g., `CONFLUENT_PAYMENT_PRODUCER_API_KEY`)
 - `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_SECRET` (e.g., `CONFLUENT_PAYMENT_PRODUCER_API_SECRET`)
+
+This means the same service account name can exist in multiple environments without collision.
 
 ### Step 5: Commit and Create PR
 ```bash
@@ -246,7 +249,7 @@ git push -u origin my-service-kafka-setup
 - CD workflow runs automatically
 - Terraform applies changes to the corresponding environment
 - Kafka topics, schemas, and ACLs are created in Confluent Cloud
-- **If service accounts were defined:** API keys are automatically generated and stored in GitHub secrets with names like `CONFLUENT_<NAME>_API_KEY` and `CONFLUENT_<NAME>_API_SECRET`
+- **If service accounts were defined:** API keys are automatically generated and stored as **environment-scoped secrets** under Settings → Environments → `<ENV>` with names like `CONFLUENT_<NAME>_API_KEY` and `CONFLUENT_<NAME>_API_SECRET`
 
 ## Important Notes
 
@@ -304,7 +307,7 @@ Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/k
   - Resources use `for_each` maps keyed by topic/subject/acl/service-account id
   - Topics include `lifecycle { prevent_destroy = true }` — do not remove topics without discussion
   - Schemas use `format = "AVRO"` and load content with `file(each.value.schema_file)`
-  - Service accounts auto-generate API keys and store credentials in GitHub secrets
+  - Service accounts auto-generate API keys and store credentials as **environment-scoped** GitHub secrets
 - **Remote state:** S3 backend configured via workflow `-backend-config` using `TF_BUCKET_STATE` and `AWS_REGION`; keys are scoped per `<PROJECT>/<ENV>`
 
 ### Secrets and Variables (GitHub Actions)
@@ -328,10 +331,12 @@ These are mandatory for parser execution and must be defined in the GitHub Envir
 - **Terraform creates:**
   - `confluent_service_account` resources from YAML definitions
   - `confluent_api_key` for each service account (Kafka cluster access)
-  - Automatically stores API keys in GitHub secrets via `null_resource` + GitHub CLI
+  - Automatically stores API keys as **environment-scoped secrets** via `null_resource` + GitHub CLI
 - **Secret naming convention:** `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_KEY` and `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_SECRET`
-- **Output:** Terraform outputs service account IDs and corresponding GitHub secret names for reference
-- **Example:** Service account name `payment-producer` → secrets `CONFLUENT_PAYMENT_PRODUCER_API_KEY` and `CONFLUENT_PAYMENT_PRODUCER_API_SECRET`
+- **Storage location:** Secrets are stored under Settings → Environments → `<ENV>` (e.g., dev/test/qa/prod)
+- **Output:** Terraform outputs service account IDs, environment, and corresponding GitHub secret names for reference
+- **Example:** Service account `payment-producer` in `dev` → secrets `CONFLUENT_PAYMENT_PRODUCER_API_KEY` and `CONFLUENT_PAYMENT_PRODUCER_API_SECRET` under the `dev` environment
+- **Benefit:** Same service account name can exist in multiple environments without collision
 
 ### Unified Access Configuration Workflow
 - **Single section:** `access_config` replaces separate `service_accounts` and `acls`
@@ -374,12 +379,14 @@ These are mandatory for parser execution and must be defined in the GitHub Envir
 - Ensure `GITHUB_TOKEN` has write permissions to secrets (it does by default in GitHub Actions)
 - Check GitHub Actions workflow logs for errors during `terraform apply`
 - Verify service account names are valid (alphanumeric, hyphens)
-- Secrets are stored as `CONFLUENT_<UPPER_NAME>_API_KEY` and `CONFLUENT_<UPPER_NAME>_API_SECRET`
+- Secrets are stored as **environment-scoped** under Settings → Environments → `<ENV>` → Secrets
+- Secret names: `CONFLUENT_<UPPER_NAME>_API_KEY` and `CONFLUENT_<UPPER_NAME>_API_SECRET`
 
 **How to use generated service account credentials:**
-- After CD completes, check GitHub repository Settings → Secrets and variables → Actions
-- Find your service account secrets (e.g., `CONFLUENT_PAYMENT_PRODUCER_API_KEY`)
-- Reference in your workflows with `${{ secrets.CONFLUENT_PAYMENT_PRODUCER_API_KEY }}`
+- After CD completes, navigate to Settings → Secrets and variables → Actions → Environments → `<ENV>`
+- Find your service account secrets (e.g., `CONFLUENT_PAYMENT_PRODUCER_API_KEY` under `dev` environment)
+- To reference in workflows that run in that environment: `${{ secrets.CONFLUENT_PAYMENT_PRODUCER_API_KEY }}`
+- The workflow must set `environment: dev` (or the appropriate env) to access environment-scoped secrets
 
 ## Questions?
 

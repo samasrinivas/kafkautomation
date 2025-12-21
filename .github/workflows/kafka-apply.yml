@@ -121,7 +121,7 @@ jobs:
         run: terraform -chdir=terraform validate
 
       - name: Terraform Plan
-        run: terraform -chdir=terraform plan -no-color -out=tfplan.bin -var-file="terraform.tfvars.json" -var="github_repo_owner=${{ github.repository_owner }}" -var="github_repo_name=${{ github.event.repository.name }}" -var="github_token=${{ secrets.GITHUB_TOKEN }}"
+        run: terraform -chdir=terraform plan -no-color -out=tfplan.bin -var-file="terraform.tfvars.json" -var="github_repo_owner=${{ github.repository_owner }}" -var="github_repo_name=${{ github.event.repository.name }}" -var="github_token=${{ secrets.GITHUB_TOKEN }}" -var="github_environment=${{ needs.detect.outputs.env }}"
 
       - name: Terraform Apply
         run: terraform -chdir=terraform apply -no-color -auto-approve tfplan.bin

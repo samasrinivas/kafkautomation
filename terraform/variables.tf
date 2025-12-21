@@ -91,3 +91,9 @@ variable "github_token" {
   description = "GitHub PAT with repo scope for creating secrets"
   default     = ""
 }
+
+variable "github_environment" {
+  type        = string
+  description = "GitHub Environment name (dev/test/qa/prod) for storing environment-scoped secrets"
+  default     = ""
+}
