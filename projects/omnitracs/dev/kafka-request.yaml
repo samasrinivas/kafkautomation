@@ -14,6 +14,11 @@ topics:
     replication_factor: 3
     config:
       retention.ms: "604800000"
+  - name: "payment-reversed"
+    partitions: 6
+    replication_factor: 3
+    config:
+      retention.ms: "604800000"
 # SCHEMAS (OPTIONAL)
 # If your service needs a schema:
 # 1. Create an Avro schema file under schemas/dev/
