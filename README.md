@@ -259,7 +259,7 @@ git push -u origin my-service-kafka-setup
 - YAML fields for these values are ignored.
 
 ### ✅ You CAN Change These
-- `service_name` — Use your service name
+- `service_name` — Documentation only (not used by parser/Terraform; reserved for future resource prefixing/tagging)
 - `topics[].name`, `topics[].partitions`, `topics[].replication_factor`
 - `topics[].config` — Retention, compression, etc.
 - `access_config[].name`, `access_config[].role`, `access_config[].topics` — Your service account permissions

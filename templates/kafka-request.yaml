@@ -3,6 +3,8 @@
 #   ORGANIZATION_ID, ENVIRONMENT_ID, KAFKA_CLUSTER_ID, REST_ENDPOINT, SCHEMA_REGISTRY_ID
 # Do not hardcode those here; set them per environment in GitHub (Settings → Environments).
 
+# Service name (documentation only - not currently used by parser/Terraform)
+# Reserved for future use in resource prefixing/tagging
 service_name: "your-service-name"
 
 # Topics to create/manage
