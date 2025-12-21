@@ -25,10 +25,8 @@ jobs:
       - name: Verify AWS identity
         run: aws sts get-caller-identity
 
-      - name: Export creds & vars to env
+      - name: Export global variables to env
         run: |
-          echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY }}" >> $GITHUB_ENV
-          echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET }}" >> $GITHUB_ENV
           echo "TF_BUCKET_STATE=${{ vars.TF_BUCKET_STATE }}" >> $GITHUB_ENV
 
       - name: Lint kafka-request.yaml
@@ -57,26 +55,42 @@ jobs:
           # Set Kafka credentials based on environment
           case "$ENV" in
             dev)
+              echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY_DEV }}" >> $GITHUB_ENV
+              echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET_DEV }}" >> $GITHUB_ENV
               echo "TF_VAR_kafka_api_key=${{ secrets.KAFKA_API_KEY_DEV }}" >> $GITHUB_ENV
               echo "TF_VAR_kafka_api_secret=${{ secrets.KAFKA_API_SECRET_DEV }}" >> $GITHUB_ENV
+              echo "CONFLUENT_KEY_VAR=CONFLUENT_API_KEY_DEV" >> $GITHUB_ENV
+              echo "CONFLUENT_SECRET_VAR=CONFLUENT_API_SECRET_DEV" >> $GITHUB_ENV
               echo "KAFKA_KEY_VAR=KAFKA_API_KEY_DEV" >> $GITHUB_ENV
               echo "KAFKA_SECRET_VAR=KAFKA_API_SECRET_DEV" >> $GITHUB_ENV
               ;;
             test)
+              echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY_TEST }}" >> $GITHUB_ENV
+              echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET_TEST }}" >> $GITHUB_ENV
               echo "TF_VAR_kafka_api_key=${{ secrets.KAFKA_API_KEY_TEST }}" >> $GITHUB_ENV
               echo "TF_VAR_kafka_api_secret=${{ secrets.KAFKA_API_SECRET_TEST }}" >> $GITHUB_ENV
+              echo "CONFLUENT_KEY_VAR=CONFLUENT_API_KEY_TEST" >> $GITHUB_ENV
+              echo "CONFLUENT_SECRET_VAR=CONFLUENT_API_SECRET_TEST" >> $GITHUB_ENV
               echo "KAFKA_KEY_VAR=KAFKA_API_KEY_TEST" >> $GITHUB_ENV
               echo "KAFKA_SECRET_VAR=KAFKA_API_SECRET_TEST" >> $GITHUB_ENV
               ;;
             qa)
+              echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY_QA }}" >> $GITHUB_ENV
+              echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET_QA }}" >> $GITHUB_ENV
               echo "TF_VAR_kafka_api_key=${{ secrets.KAFKA_API_KEY_QA }}" >> $GITHUB_ENV
               echo "TF_VAR_kafka_api_secret=${{ secrets.KAFKA_API_SECRET_QA }}" >> $GITHUB_ENV
+              echo "CONFLUENT_KEY_VAR=CONFLUENT_API_KEY_QA" >> $GITHUB_ENV
+              echo "CONFLUENT_SECRET_VAR=CONFLUENT_API_SECRET_QA" >> $GITHUB_ENV
               echo "KAFKA_KEY_VAR=KAFKA_API_KEY_QA" >> $GITHUB_ENV
               echo "KAFKA_SECRET_VAR=KAFKA_API_SECRET_QA" >> $GITHUB_ENV
               ;;
             prod)
+              echo "TF_VAR_confluent_api_key=${{ secrets.CONFLUENT_API_KEY_PROD }}" >> $GITHUB_ENV
+              echo "TF_VAR_confluent_api_secret=${{ secrets.CONFLUENT_API_SECRET_PROD }}" >> $GITHUB_ENV
               echo "TF_VAR_kafka_api_key=${{ secrets.KAFKA_API_KEY_PROD }}" >> $GITHUB_ENV
               echo "TF_VAR_kafka_api_secret=${{ secrets.KAFKA_API_SECRET_PROD }}" >> $GITHUB_ENV
+              echo "CONFLUENT_KEY_VAR=CONFLUENT_API_KEY_PROD" >> $GITHUB_ENV
+              echo "CONFLUENT_SECRET_VAR=CONFLUENT_API_SECRET_PROD" >> $GITHUB_ENV
               echo "KAFKA_KEY_VAR=KAFKA_API_KEY_PROD" >> $GITHUB_ENV
               echo "KAFKA_SECRET_VAR=KAFKA_API_SECRET_PROD" >> $GITHUB_ENV
               ;;
@@ -86,8 +100,17 @@ jobs:
               ;;
           esac
 
-      - name: Validate Kafka API secrets exist
+      - name: Validate API secrets exist
         run: |
+          if [ -z "$TF_VAR_confluent_api_key" ] || [ -z "$TF_VAR_confluent_api_secret" ]; then
+            echo "Error: Required Confluent Cloud API secrets not found in GitHub."
+            echo "Expected secrets: $CONFLUENT_KEY_VAR and $CONFLUENT_SECRET_VAR"
+            echo ""
+            echo "Add them to repo settings → Secrets and variables → Actions:"
+            echo "  - $CONFLUENT_KEY_VAR = Confluent Cloud API key for $ENVIRONMENT environment"
+            echo "  - $CONFLUENT_SECRET_VAR = Confluent Cloud API secret for $ENVIRONMENT environment"
+            exit 1
+          fi
           if [ -z "$TF_VAR_kafka_api_key" ] || [ -z "$TF_VAR_kafka_api_secret" ]; then
             echo "Error: Required Kafka API secrets not found in GitHub."
             echo "Expected secrets: $KAFKA_KEY_VAR and $KAFKA_SECRET_VAR"

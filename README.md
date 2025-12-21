@@ -82,17 +82,26 @@ kafkautomation/
 
 ## Setup: GitHub Secrets
 
-Before the first workflow run, set up two types of API credentials in GitHub repo settings → Secrets and variables → Actions:
+Before the first workflow run, set up API credentials in GitHub repo settings → Secrets and variables → Actions:
 
-### 1. Control-Plane Credentials (Organization-level, one set for all environments)
-- `CONFLUENT_API_KEY` — Cloud API key for service account with `EnvironmentAdmin` role
-- `CONFLUENT_API_SECRET` — Corresponding API secret
+### 1. Control-Plane Credentials (Per-environment)
+
+Create one **Cloud API key** per environment (owned by a service account like `kafka-terraform_runner` with `EnvironmentAdmin` role):
+
+- `CONFLUENT_API_KEY_DEV` — Cloud API key for dev environment
+- `CONFLUENT_API_SECRET_DEV` — Corresponding secret
+- `CONFLUENT_API_KEY_TEST` — Cloud API key for test environment
+- `CONFLUENT_API_SECRET_TEST` — Corresponding secret
+- `CONFLUENT_API_KEY_QA` — Cloud API key for QA environment
+- `CONFLUENT_API_SECRET_QA` — Corresponding secret
+- `CONFLUENT_API_KEY_PROD` — Cloud API key for prod environment
+- `CONFLUENT_API_SECRET_PROD` — Corresponding secret
 
 **Used for:** Service account creation, role bindings, schema registry operations.
 
-### 2. Data-Plane Credentials (Per-environment, one set per Kafka cluster)
+### 2. Data-Plane Credentials (Per-environment)
 
-Create one **Kafka cluster–scoped** API key per environment (owned by a service account like `kafka-terraform_runner`), and add:
+Create one **Kafka cluster–scoped** API key per environment (owned by a service account like `kafka-terraform_runner`):
 
 - `KAFKA_API_KEY_DEV` — Kafka cluster API key for dev cluster (lkc-oj0vro)
 - `KAFKA_API_SECRET_DEV` — Corresponding secret
