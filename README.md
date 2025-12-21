@@ -27,8 +27,7 @@ This repo automates Confluent Kafka resource provisioning through Git, providing
 ```
 kafkautomation/
 ├── templates/
-│   ├── kafka-request.yaml        # Single generic template to copy
-│   └── s3_bucket_full_access_policy.json
+│   └── kafka-request.yaml        # Single generic template to copy
 │
 ├── schemas/                      # Environment-specific schemas (optional)
 │   ├── dev/
@@ -55,7 +54,9 @@ kafkautomation/
 ├── terraform/
 │   ├── main.tf                  # Confluent resources (topics, schemas, acls)
 │   ├── providers.tf             # Backend (S3 state isolation by env)
-│   └── variables.tf             # Input variable shapes
+│   ├── variables.tf             # Input variable shapes
+│   └── policies/
+│       └── s3_bucket_full_access_policy.json
 │
 ├── scripts/
 │   └── parser.py                # Converts YAML → JSON for Terraform
@@ -74,35 +75,23 @@ kafkautomation/
 
 Before the first workflow run, set up API credentials in GitHub repo settings → Secrets and variables → Actions:
 
-### 1. Control-Plane Credentials (Per-environment)
+### 1. Control-Plane Credentials (Per-environment via GitHub Environments)
 
-Create one **Cloud API key** per environment (owned by a service account like `kafka-terraform_runner` with `EnvironmentAdmin` role):
+Create one **Cloud API key** per environment (owned by a service account like `kafka-terraform_runner` with `EnvironmentAdmin` role) and store it as environment-scoped secrets:
 
-- `CONFLUENT_API_KEY_DEV` — Cloud API key for dev environment
-- `CONFLUENT_API_SECRET_DEV` — Corresponding secret
-- `CONFLUENT_API_KEY_TEST` — Cloud API key for test environment
-- `CONFLUENT_API_SECRET_TEST` — Corresponding secret
-- `CONFLUENT_API_KEY_QA` — Cloud API key for QA environment
-- `CONFLUENT_API_SECRET_QA` — Corresponding secret
-- `CONFLUENT_API_KEY_PROD` — Cloud API key for prod environment
-- `CONFLUENT_API_SECRET_PROD` — Corresponding secret
+- `CONFLUENT_API_KEY`
+- `CONFLUENT_API_SECRET`
 
-**Used for:** Service account creation, role bindings, schema registry operations.
+**Used for:** Service account creation, role bindings, schema registry operations. Add these under each GitHub Environment (dev/test/qa/prod).
 
-### 2. Data-Plane Credentials (Per-environment)
+### 2. Data-Plane Credentials (Per-environment via GitHub Environments)
 
-Create one **Kafka cluster–scoped** API key per environment (owned by a service account like `kafka-terraform_runner`):
+Create one **Kafka cluster–scoped** API key per environment (owned by a service account like `kafka-terraform_runner`) and store it as environment-scoped secrets:
 
-- `KAFKA_API_KEY_DEV` — Kafka cluster API key for dev cluster (lkc-oj0vro)
-- `KAFKA_API_SECRET_DEV` — Corresponding secret
-- `KAFKA_API_KEY_TEST` — Kafka cluster API key for test cluster
-- `KAFKA_API_SECRET_TEST` — Corresponding secret
-- `KAFKA_API_KEY_QA` — Kafka cluster API key for QA cluster
-- `KAFKA_API_SECRET_QA` — Corresponding secret
-- `KAFKA_API_KEY_PROD` — Kafka cluster API key for prod cluster
-- `KAFKA_API_SECRET_PROD` — Corresponding secret
+- `KAFKA_API_KEY`
+- `KAFKA_API_SECRET`
 
-**Used for:** Topic creation, data-plane operations.
+**Used for:** Topic creation and data-plane operations. Add these under each GitHub Environment (dev/test/qa/prod).
 
 ### 3. AWS Credentials (S3 backend for Terraform state)
 - `AWS_ACCESS_KEY_ID` — AWS account access key
