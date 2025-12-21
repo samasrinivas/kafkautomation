@@ -1,7 +1,7 @@
 name: Kafka GitOps CI flow
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, v1.1 ]
     types: [opened, synchronize, reopened]
     paths:
       - '**/kafka-request.yaml'
