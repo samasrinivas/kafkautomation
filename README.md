@@ -8,19 +8,18 @@ This repo automates Confluent Kafka resource provisioning through Git, providing
 
 **How it works:**
 1. Create a feature branch named after your project.
-2. Create project folders under `projects/<PROJECT>/<ENV>/` (dev/test/qa/prod).
-3. Copy the generic template `templates/kafka-request.yaml` into your project folder.
-4. Schemas are optional. If needed, add Avro files under `schemas/<ENV>/` and reference them in `kafka-request.yaml`; otherwise, leave the `schemas:` section commented.
-5. CI runs on PR: lints YAML, converts to Terraform variables, auto-detects the environment from the file path, initializes Terraform with the per-environment backend key, and posts the plan as a PR comment.
-6. On merge to `main`, CD applies the plan with environment-specific settings. If schemas were omitted, no schema resources are created.
-7. Confluent resources are provisioned in the correct environment with isolated Terraform state (S3 key per environment).
+2. Add/update one file: `projects/<PROJECT>/<ENV>/kafka-request.yaml` (dev/test/qa/prod) using `templates/kafka-request.yaml`.
+3. (Optional) Add Avro schemas under `schemas/<ENV>/...` and reference them in `kafka-request.yaml`.
+4. Open a PR: CI lints YAML, converts to tfvars via `scripts/parser.py` (metadata comes from GitHub Environment vars), detects `<ENV>` from the path, initializes Terraform with a project+env state key, and posts the plan as a PR comment.
+5. Merge to `main`: CD reuses the detected env, runs Terraform apply with the same backend key, and provisions topics/schemas/ACLs. If schemas are absent, none are created.
+6. State is isolated per project and environment: `terraform/<PROJECT>/<ENV>/data-streaming-platform.tfstate` in the S3 bucket provided by `TF_BUCKET_STATE`.
 
 **YAML → Terraform flow:**
-- Author `projects/<PROJECT>/<ENV>/kafka-request.yaml` using the template; do not add Confluent environment metadata in YAML.
-- Store any schema files under `schemas/<ENV>/...` and reference them via `schema_file` paths; leave the `schemas:` section commented if not needed.
-- `scripts/parser.py` converts YAML to JSON and validates schema file existence.
-- Workflows detect environment from path and set Terraform backend `key` per environment.
-- Terraform plans/applies using the generated variables to create topics, schemas, and ACLs.
+- Author `projects/<PROJECT>/<ENV>/kafka-request.yaml` using the template; Confluent metadata must come from GitHub Environment variables (not YAML).
+- Store schema files under `schemas/<ENV>/...` and reference via `schema_file`; leave `schemas:` commented if unused.
+- `scripts/parser.py` (env-only metadata) converts YAML to JSON and validates schema existence and topic references.
+- Workflows detect project/env from the file path, inject env secrets/vars, set the backend key to `terraform/<PROJECT>/<ENV>/...`, and pass credentials to Terraform.
+- Terraform plans/applies to create topics, schemas, service accounts, API keys, and ACLs.
 
 ## Directory Structure
 
