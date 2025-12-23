@@ -1,7 +1,7 @@
 name: Kafka GitOps CD flow
 on:
   push:
-    branches: [ main, v1.1 ]
+    branches: [ main, features ]
     paths:
       - '**/kafka-request.yaml'
       - 'schemas/**'
