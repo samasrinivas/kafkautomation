@@ -37,7 +37,8 @@ variable "rest_endpoint" {
 }
 
 variable "schema_registry_id" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "topics" {
