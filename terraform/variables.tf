@@ -41,6 +41,23 @@ variable "schema_registry_id" {
   default = ""
 }
 
+variable "schema_registry_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "schema_registry_api_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "schema_registry_rest_endpoint" {
+  type    = string
+  default = ""
+}
+
 variable "topics" {
   type = map(object({
     partitions          = number

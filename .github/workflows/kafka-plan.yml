@@ -57,6 +57,9 @@ jobs:
       KAFKA_CLUSTER_ID: ${{ vars.KAFKA_CLUSTER_ID }}
       REST_ENDPOINT: ${{ vars.REST_ENDPOINT }}
       SCHEMA_REGISTRY_ID: ${{ vars.SCHEMA_REGISTRY_ID }}
+      SCHEMA_REGISTRY_API_KEY: ${{ secrets.SCHEMA_REGISTRY_API_KEY }}
+      SCHEMA_REGISTRY_API_SECRET: ${{ secrets.SCHEMA_REGISTRY_API_SECRET }}
+      SCHEMA_REGISTRY_REST_ENDPOINT: ${{ vars.SCHEMA_REGISTRY_REST_ENDPOINT }}
 
     steps:
       - uses: actions/checkout@v4

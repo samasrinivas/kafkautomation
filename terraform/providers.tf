@@ -19,4 +19,10 @@ provider "confluent" {
   kafka_api_secret    = var.kafka_api_secret
   kafka_rest_endpoint = var.rest_endpoint
   kafka_id            = var.kafka_cluster_id
+  
+  # Schema Registry attributes - only set if schema_registry_id is provided
+  schema_registry_api_key        = var.schema_registry_api_key != "" ? var.schema_registry_api_key : null
+  schema_registry_api_secret     = var.schema_registry_api_secret != "" ? var.schema_registry_api_secret : null
+  schema_registry_rest_endpoint  = var.schema_registry_rest_endpoint != "" ? var.schema_registry_rest_endpoint : null
+  schema_registry_id             = var.schema_registry_id != "" ? var.schema_registry_id : null
 }

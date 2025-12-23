@@ -58,12 +58,17 @@ for s in data.get('schemas', []):
         'schema_file': schema_file
     }
 
-# Only add schema_registry_id if schemas are present
+# Only add schema registry attributes if schemas are present
 if data.get('schemas'):
-    if not os.getenv('SCHEMA_REGISTRY_ID'):
-        print("Error: SCHEMA_REGISTRY_ID environment variable is required when schemas are defined")
+    required_sr_vars = ['SCHEMA_REGISTRY_ID', 'SCHEMA_REGISTRY_API_KEY', 'SCHEMA_REGISTRY_API_SECRET', 'SCHEMA_REGISTRY_REST_ENDPOINT']
+    missing_sr_vars = [var for var in required_sr_vars if not os.getenv(var)]
+    if missing_sr_vars:
+        print(f"Error: Missing required schema registry environment variables: {', '.join(missing_sr_vars)}")
         sys.exit(1)
     tf['schema_registry_id'] = os.getenv('SCHEMA_REGISTRY_ID')
+    tf['schema_registry_api_key'] = os.getenv('SCHEMA_REGISTRY_API_KEY')
+    tf['schema_registry_api_secret'] = os.getenv('SCHEMA_REGISTRY_API_SECRET')
+    tf['schema_registry_rest_endpoint'] = os.getenv('SCHEMA_REGISTRY_REST_ENDPOINT')
 
 # Process access_config: creates both service_accounts and acls from unified structure
 acl_counter = 0
