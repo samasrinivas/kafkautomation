@@ -18,8 +18,7 @@ required_env_vars = [
     'ORGANIZATION_ID',
     'ENVIRONMENT_ID',
     'KAFKA_CLUSTER_ID',
-    'REST_ENDPOINT',
-    'SCHEMA_REGISTRY_ID'
+    'REST_ENDPOINT'
 ]
 
 missing_envs = [var for var in required_env_vars if not os.getenv(var)]
@@ -33,7 +32,6 @@ tf = {
     "environment_id": os.getenv('ENVIRONMENT_ID'),
     "kafka_cluster_id": os.getenv('KAFKA_CLUSTER_ID'),
     "rest_endpoint": os.getenv('REST_ENDPOINT'),
-    "schema_registry_id": os.getenv('SCHEMA_REGISTRY_ID'),
     "topics": {},
     "schemas": {},
     "acls": {},
@@ -59,6 +57,13 @@ for s in data.get('schemas', []):
         'subject': s['subject'],
         'schema_file': schema_file
     }
+
+# Only add schema_registry_id if schemas are present
+if data.get('schemas'):
+    if not os.getenv('SCHEMA_REGISTRY_ID'):
+        print("Error: SCHEMA_REGISTRY_ID environment variable is required when schemas are defined")
+        sys.exit(1)
+    tf['schema_registry_id'] = os.getenv('SCHEMA_REGISTRY_ID')
 
 # Process access_config: creates both service_accounts and acls from unified structure
 acl_counter = 0
