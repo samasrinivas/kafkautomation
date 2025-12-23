@@ -63,22 +63,24 @@ resource "null_resource" "store_github_secrets" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      if [ -n "${var.github_token}" ] && [ -n "${var.github_repo_owner}" ] && [ -n "${var.github_repo_name}" ]; then
-        echo "Storing secrets for ${each.value.display_name}..."
+      if [ -n "${var.github_token}" ] && [ -n "${var.github_repo_owner}" ] && [ -n "${var.github_repo_name}" ] && [ -n "${var.github_environment}" ]; then
+        echo "Storing secrets for ${each.value.display_name} in environment ${var.github_environment}..."
         
-        # Store API Key
+        # Store API Key (environment-scoped)
         echo "${confluent_api_key.kafka_api_keys[each.key].id}" | gh secret set "CONFLUENT_${upper(replace(each.key, "-", "_"))}_API_KEY" \
           --repo "${var.github_repo_owner}/${var.github_repo_name}" \
+          --env "${var.github_environment}" \
           --app actions
         
-        # Store API Secret
+        # Store API Secret (environment-scoped)
         echo "${confluent_api_key.kafka_api_keys[each.key].secret}" | gh secret set "CONFLUENT_${upper(replace(each.key, "-", "_"))}_API_SECRET" \
           --repo "${var.github_repo_owner}/${var.github_repo_name}" \
+          --env "${var.github_environment}" \
           --app actions
         
-        echo "✓ Stored secrets: CONFLUENT_${upper(replace(each.key, "-", "_"))}_API_KEY and CONFLUENT_${upper(replace(each.key, "-", "_"))}_API_SECRET"
+        echo "✓ Stored environment-scoped secrets in ${var.github_environment}: CONFLUENT_${upper(replace(each.key, "-", "_"))}_API_KEY and CONFLUENT_${upper(replace(each.key, "-", "_"))}_API_SECRET"
       else
-        echo "⚠️  GitHub credentials not provided, skipping secret storage for ${each.value.display_name}"
+        echo "⚠️  GitHub credentials or environment not provided, skipping secret storage for ${each.value.display_name}"
       fi
     EOT
     
@@ -98,7 +100,8 @@ output "service_accounts" {
       # Secret is sensitive, will only be in state
       github_secret_key    = "CONFLUENT_${upper(replace(key, "-", "_"))}_API_KEY"
       github_secret_secret = "CONFLUENT_${upper(replace(key, "-", "_"))}_API_SECRET"
+      github_environment   = var.github_environment
     }
   }
-  description = "Service account details and GitHub secret names"
+  description = "Service account details and GitHub secret names (environment-scoped)"
 }

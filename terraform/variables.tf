@@ -37,7 +37,25 @@ variable "rest_endpoint" {
 }
 
 variable "schema_registry_id" {
-  type = string
+  type    = string
+  default = ""
+}
+
+variable "schema_registry_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "schema_registry_api_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "schema_registry_rest_endpoint" {
+  type    = string
+  default = ""
 }
 
 variable "topics" {
@@ -89,5 +107,11 @@ variable "github_token" {
   type        = string
   sensitive   = true
   description = "GitHub PAT with repo scope for creating secrets"
+  default     = ""
+}
+
+variable "github_environment" {
+  type        = string
+  description = "GitHub Environment name (dev/test/qa/prod) for storing environment-scoped secrets"
   default     = ""
 }
