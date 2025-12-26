@@ -14,6 +14,11 @@ topics:
     replication_factor: 3
     config:
       retention.ms: "604800000"
+  - name: "OrderEvents"
+    partitions: 6
+    replication_factor: 3
+    config:
+      retention.ms: "604800000"
 
 # Schemas (optional)
 # schemas:
