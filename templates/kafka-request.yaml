@@ -18,7 +18,7 @@ topics:
 # Schemas (optional)
 # schemas:
 #   - subject: "example-topic-value"
-#     schema_file: "schemas/dev/example-topic-value.avsc"
+#     schema_file: "domains/your-domain/dev/schemas/example-topic-value.avsc"
 
 schemas: []
 
