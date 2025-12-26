@@ -5,7 +5,113 @@ Domain-based GitOps for Confluent Kafka: domains declare topics, schemas, servic
 
 ---
 
-## How It Works (end-to-end)
+## Developer Workflow (domains)
+
+### Step 1: Create a domain branch
+```bash
+git checkout -b my-domain  # Feature branch named after your domain (e.g., payment-service)
+```
+
+### Step 2: Create domain folder structure
+```bash
+mkdir -p domains/my-domain/dev/schemas
+mkdir -p domains/my-domain/test/schemas
+mkdir -p domains/my-domain/qa/schemas
+mkdir -p domains/my-domain/prod/schemas
+```
+
+### Step 3: Copy template and customize for target environment
+```bash
+cp templates/kafka-request.yaml domains/my-domain/dev/kafka-request.yaml
+```
+
+Edit `domains/my-domain/dev/kafka-request.yaml`:
+```yaml
+service_name: my-domain
+description: Domain-owned resources
+
+topics:
+  - name: my-events
+    partitions: 3
+    replication_factor: 3
+    config:
+      retention.ms: 604800000
+
+schemas:
+  - subject: my-events-value
+    schema_file: domains/my-domain/dev/schemas/my-events.avsc
+
+access_config:
+  - name: my-domain-api           # Use domain prefix
+    description: API producer
+    role: DeveloperRead
+    topics: [my-events]
+```
+
+### Step 4: (Optional) Add schema files
+```bash
+cat > domains/my-domain/dev/schemas/my-events.avsc << 'EOF'
+{
+  "type": "record",
+  "name": "MyEvents",
+  "fields": [
+    {"name": "event_id", "type": "string"},
+    {"name": "timestamp", "type": "long"}
+  ]
+}
+EOF
+```
+
+### Step 5: Commit and push
+```bash
+git add domains/
+git commit -m "feat: add kafka config for my-domain (dev)"
+git push -u origin feature/my-domain-dev
+```
+
+### Step 6: Open PR to target branch
+Open PR via GitHub UI: `feature/my-domain-dev` → `features`
+
+### Step 7: Review plan
+CI automatically:
+- Lints YAML
+- Checks environment lock (fails if locked)
+- Aggregates all domains' configs for the env
+- Validates for cross-domain conflicts
+- Posts terraform plan to PR for review
+
+### Step 8: Merge to target branch
+After review and approvals:
+```bash
+git merge --no-ff feature/my-domain-dev
+git push origin features
+```
+
+### Step 9: CD deploys automatically
+CD automatically:
+- Acquires lock for the environment
+- Re-aggregates and re-validates
+- Runs terraform apply
+- Creates topics, schemas, service accounts, API keys, ACLs
+- Stores API keys as environment-scoped GitHub secrets
+- Commits catalogs and releases lock
+
+### Step 10: Delete domain branch
+After successful deployment:
+```bash
+git branch -d my-domain           # Delete local branch
+git push origin --delete my-domain # Delete remote branch
+```
+
+### Best Practices
+- **One environment per PR**: Each PR should touch only one environment (dev/test/qa/prod)
+- **Naming conventions**: Prefix resources with domain name (e.g., `my-domain-producer`, `my-domain-events`)
+- **Lock handling**: Only one environment deploys at a time; wait if locked
+- **Schema paths**: Must be under `domains/<domain>/<env>/schemas/`
+
+---
+
+## How It Works (technical overview)
 
 1) **Author intent**: Each domain owns `domains/<domain>/<env>/kafka-request.yaml` (+ optional `schemas/`).
 2) **PR → CI (`kafka-plan.yml`)**
@@ -28,81 +134,38 @@ Domain-based GitOps for Confluent Kafka: domains declare topics, schemas, servic
 
 ```
 domains/
-  <domain>/<env>/kafka-request.yaml
-  <domain>/<env>/schemas/*.avsc
+  <domain>/<env>/kafka-request.yaml       # Domain's kafka config (topics, schemas, ACLs)
+  <domain>/<env>/schemas/*.avsc           # Domain's Avro schema files
 
-catalogs/                  # Aggregated, committed snapshots per env
+catalogs/                                 # Aggregated, committed snapshots per env
   dev|test|qa|prod/
-    kafka-catalog.yaml     # Generated from all domains (per env)
-    schemas-catalog.json   # Generated schema metadata (per env)
-    .lock                  # Deployment lock (per env)
+    kafka-catalog.yaml                    # Generated from all domains (per env)
+    schemas-catalog.json                  # Generated schema metadata (per env)
+    .lock                                 # Deployment lock (per env)
 
 scripts/
-  aggregate-kafka.py       # Merge domain YAML → kafka-catalog.yaml
-  aggregate-schemas.py     # Collect schemas → schemas-catalog.json
-  validate-conflicts.py    # Cross-domain duplicate detection
-  parser.py                # Aggregated catalog → tfvars.json
+  aggregate-kafka.py                      # Merge domain YAML → kafka-catalog.yaml
+  aggregate-schemas.py                    # Collect schemas → schemas-catalog.json
+  validate-conflicts.py                   # Cross-domain duplicate detection
+  parser.py                               # Aggregated catalog → tfvars.json
 
 .github/workflows/
-  kafka-plan.yml           # CI (PR)
-  kafka-apply.yml          # CD (main)
+  kafka-plan.yml                          # CI workflow (PR validation)
+  kafka-apply.yml                         # CD workflow (apply on merge)
 
-terraform/                # Confluent resources and provider config
-templates/kafka-request.yaml
+terraform/
+  main.tf                                 # Confluent Kafka, Schema Registry, ACL resources
+  providers.tf                            # Confluent provider + S3 backend config
+  variables.tf                            # Input variables (topics, schemas, service_accounts, acls)
+
+templates/kafka-request.yaml              # Template for domain teams to copy
 README.md (this file)
 ```
 
----
-
-## Getting Started (domain teams)
-
-1) **Scaffold**
-```bash
-mkdir -p domains/my-team/dev/schemas
-mkdir -p domains/my-team/test/schemas
-mkdir -p domains/my-team/qa/schemas
-mkdir -p domains/my-team/prod/schemas
-cp templates/kafka-request.yaml domains/my-team/dev/
-```
-
-2) **Edit** `domains/my-team/dev/kafka-request.yaml`
-```yaml
-service_name: my-team
-description: Domain-owned resources
-
-topics:
-  - name: my-events
-    partitions: 3
-    replication_factor: 3
-    config:
-      retention.ms: 604800000
-
-schemas:
-  - subject: my-events-value
-    schema_file: domains/my-team/dev/schemas/my-events.avsc
-
-access_config:
-  - name: my-team-api           # Use domain prefix
-    description: API producer
-    role: DeveloperRead
-    topics: [my-events]
-```
-
-3) **(Optional) Add schema** `domains/my-team/dev/schemas/my-events.avsc`
-```json
-{
-  "type": "record",
-  "name": "MyEvents",
-  "fields": [
-    {"name": "event_id", "type": "string"},
-    {"name": "timestamp", "type": "long"}
-  ]
-}
-```
-
-4) **Open PR** (feature branch) → CI runs plan and conflict checks.
-
-5) **Merge to main** → CD applies and updates catalogs; lock auto-released.
+**Terraform files detail:**
+- `main.tf`: Creates topics with `prevent_destroy`, schemas, service accounts, API keys, ACLs; stores secrets in GitHub via provisioner.
+- `providers.tf`: Configures Confluent provider and S3 backend for state (key per domain+env: `terraform/<domain>/<env>/...`).
+- `variables.tf`: Defines input shapes for aggregated catalog (topics, schemas, acls, service_accounts) + GitHub/AWS variables.
 
 ---
 
