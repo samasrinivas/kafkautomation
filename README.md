@@ -11,15 +11,15 @@ Domain-based GitOps for Confluent Kafka: domains declare topics, schemas, servic
 2) **PR → CI (`kafka-plan.yml`)**
    - Lint YAML; check environment lock (`catalogs/<env>/.lock`).
    - Aggregate all domain files → `catalogs/<env>/kafka-catalog.yaml` + `schemas-catalog.json` (temp).
-   - Validate conflicts vs deployed catalogs (main): duplicate topics, schema subjects, service account names.
+   - Validate conflicts vs deployed catalogs on base branch: duplicate topics, schema subjects, service account names.
    - Parse aggregated catalog → `terraform/terraform.tfvars.json` (env vars only).
    - Terraform init/validate/plan; post plan to PR.
 3) **Merge → CD (`kafka-apply.yml`)**
-   - Acquire lock (`catalogs/<env>/.lock`, committed to main).
-   - Re-aggregate, re-validate conflicts, parse.
+   - Acquire lock (`catalogs/<env>/.lock`, committed to target branch).
+   - Re-aggregate, re-validate conflicts against target branch, parse.
    - Terraform plan & apply (topics with prevent_destroy, schemas, service accounts, API keys, ACLs).
    - Store API keys as environment-scoped GitHub secrets.
-   - Commit updated catalogs (`catalogs/<env>/kafka-catalog.yaml`, `schemas-catalog.json`) and release lock.
+   - Commit updated catalogs (`catalogs/<env>/kafka-catalog.yaml`, `schemas-catalog.json`) and release lock to target branch.
 4) **State isolation**: `s3://$TF_BUCKET_STATE/terraform/<domain>/<env>/data-streaming-platform.tfstate`.
 
 ---
@@ -134,16 +134,16 @@ Workflows will fail fast with clear messages if any are missing.
 - Fail if `catalogs/<env>/.lock` exists.
 - Lint all domain `kafka-request.yaml` files for that env.
 - Aggregate → `catalogs/<env>/kafka-catalog.yaml` (temp) + `schemas-catalog.json`.
-- Validate conflicts vs deployed catalogs from main.
+- Validate conflicts vs deployed catalogs on base branch.
 - Parse aggregated catalog → `terraform/terraform.tfvars.json`.
 - Terraform init/validate/plan; post plan to PR.
 
-### CD – `kafka-apply.yml` (main)
-- Acquire env lock (`catalogs/<env>/.lock`, committed).
-- Aggregate + validate conflicts (fresh).
+### CD – `kafka-apply.yml` (on merge to target branch)
+- Acquire env lock (`catalogs/<env>/.lock`, committed to target branch).
+- Aggregate + validate conflicts against target branch (fresh).
 - Parse → tfvars; terraform plan/apply.
-- On success: commit updated catalogs, delete lock, push.
-- On failure: delete lock, push (so others can proceed).
+- On success: commit updated catalogs, delete lock, push to target branch.
+- On failure: delete lock, push to target branch (so others can proceed).
 
 ---
 
@@ -214,7 +214,7 @@ Secret naming (env-scoped):
 
 ## Troubleshooting
 
-- **Env locked:** Wait for current deployment; lock is auto-released on finish. If stuck, remove `.lock` in `catalogs/<env>/` on main.
+- **Env locked:** Wait for current deployment; lock is auto-released on finish. If stuck, manually remove `.lock` file in `catalogs/<env>/` from the target branch and push.
 - **Conflict detected:** Rename with domain prefix or coordinate with owning domain; validator shows offending names/domains.
 - **Missing vars/secrets:** Workflows print which env secret/var is missing; add to GitHub Environment or repo secrets/vars.
 - **Schema file not found:** Ensure path includes domain/env (`domains/<domain>/<env>/schemas/...`).
@@ -226,7 +226,7 @@ Secret naming (env-scoped):
 
 1) Create test domain `domains/test-team/dev/` with one topic + SA.
 2) Open PR → ensure CI passes (aggregation, conflict check, plan posted).
-3) Merge → ensure CD acquires lock, applies, updates catalogs, releases lock.
+3) Merge to target branch → ensure CD acquires lock, applies, updates catalogs, releases lock.
 4) Try second PR during deploy → CI should fail on lock; re-run after lock release.
 5) Test conflict: two domains define same topic → CI should fail with clear message.
 
@@ -239,7 +239,7 @@ Secret naming (env-scoped):
 3) Copy `templates/kafka-request.yaml` into the target env folder; edit topics, schemas (optional), access_config.
 4) Add `.avsc` files under `domains/<domain>/<env>/schemas/` and reference via `schema_file`.
 5) Open a PR touching one environment; CI will lint, aggregate, validate conflicts, and plan.
-6) Merge to main; CD will acquire the env lock, apply, update catalogs, and release the lock.
+6) Merge to target branch; CD will acquire the env lock, apply, update catalogs, and release the lock.
 
 ## Technical Details
 
