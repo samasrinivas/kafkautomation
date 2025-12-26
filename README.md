@@ -1,394 +1,266 @@
 
 # Kafka Self-Service Automation Platform
 
-## Purpose
+Domain-based GitOps for Confluent Kafka: domains declare topics, schemas, service accounts, and ACLs in YAML; CI aggregates and validates; CD applies with serialization and cross-domain conflict prevention.
 
-This repo automates Confluent Kafka resource provisioning through Git, providing developers with a self-service workflow for creating topics, schemas, and ACLs across dev/test/qa/prod environments.
+---
 
-## Big Picture
+## How It Works (end-to-end)
 
-**How it works:**
-1. Create a feature branch named after your project.
-2. Add/update one file: `projects/<PROJECT>/<ENV>/kafka-request.yaml` (dev/test/qa/prod) using `templates/kafka-request.yaml`.
-3. Define your topics and optionally `access_config` entries (service accounts + ACLs) and schemas in the YAML.
-4. (Optional) Add Avro schemas under `schemas/<ENV>/...` and reference them in `kafka-request.yaml`.
-5. Open a PR: CI lints YAML, converts to tfvars via `scripts/parser.py` (metadata comes from GitHub Environment vars), detects `<ENV>` from the path, initializes Terraform with a project+env state key, and posts the plan as a PR comment.
-6. Merge to `main`: CD reuses the detected env, runs Terraform apply with the same backend key, and provisions topics, service accounts (with Kafka API keys), ACLs, and schemas. API keys are stored as GitHub secrets.
-7. State is isolated per project and environment: `terraform/<PROJECT>/<ENV>/data-streaming-platform.tfstate` in the S3 bucket provided by `TF_BUCKET_STATE`.
+1) **Author intent**: Each domain owns `domains/<domain>/<env>/kafka-request.yaml` (+ optional `schemas/`).
+2) **PR → CI (`kafka-plan.yml`)**
+   - Lint YAML; check environment lock (`catalogs/<env>/.lock`).
+   - Aggregate all domain files → `catalogs/<env>/kafka-catalog.yaml` + `schemas-catalog.json` (temp).
+   - Validate conflicts vs deployed catalogs (main): duplicate topics, schema subjects, service account names.
+   - Parse aggregated catalog → `terraform/terraform.tfvars.json` (env vars only).
+   - Terraform init/validate/plan; post plan to PR.
+3) **Merge → CD (`kafka-apply.yml`)**
+   - Acquire lock (`catalogs/<env>/.lock`, committed to main).
+   - Re-aggregate, re-validate conflicts, parse.
+   - Terraform plan & apply (topics with prevent_destroy, schemas, service accounts, API keys, ACLs).
+   - Store API keys as environment-scoped GitHub secrets.
+   - Commit updated catalogs (`catalogs/<env>/kafka-catalog.yaml`, `schemas-catalog.json`) and release lock.
+4) **State isolation**: `s3://$TF_BUCKET_STATE/terraform/<domain>/<env>/data-streaming-platform.tfstate`.
 
-**YAML → Terraform flow:**
-- Author `projects/<PROJECT>/<ENV>/kafka-request.yaml` using the template; Confluent metadata must come from GitHub Environment variables (not YAML).
-- Store schema files under `schemas/<ENV>/...` and reference via `schema_file`; leave `schemas:` commented if unused.
-- `scripts/parser.py` (env-only metadata) converts YAML to JSON and validates schema existence and topic references.
-- Workflows detect project/env from the file path, inject env secrets/vars, set the backend key to `terraform/<PROJECT>/<ENV>/...`, and pass credentials to Terraform.
-- Terraform plans/applies to create topics, schemas, service accounts, API keys, and ACLs.
+---
 
-## Directory Structure
+## Repository Layout
 
 ```
-kafkautomation/
-├── templates/
-│   └── kafka-request.yaml        # Single generic template to copy
-│
-├── schemas/                      # Environment-specific schemas (optional)
-│   ├── dev/
-│   │   └── <SCHEMA-FILE>.avsc             # Add your schemas here
-│   ├── test/
-│   │   └── <SCHEMA-FILE>.avsc
-│   ├── qa/
-│   │   └── <SCHEMA-FILE>.avsc
-│   └── prod/
-│       └── <SCHEMA-FILE>.avsc
-│
-├── projects/                     # Developer projects (created by developers)
-│   ├── <PROJECT>/
-│   │   ├── dev/
-│   │   │   ├── kafka-request.yaml
-│   │   ├── test/
-│   │   │   ├── kafka-request.yaml
-│   │   ├── qa/
-│   │   │   ├── kafka-request.yaml
-│   │   └── prod/
-│   │   │   ├── kafka-request.yaml
-│   └── <ANOTHER_PROJECT>/
-│
-├── terraform/
-│   ├── main.tf                  # Confluent resources (topics, schemas, acls)
-│   ├── providers.tf             # Backend (S3 state isolation by env)
-│   ├── variables.tf             # Input variable shapes
-│   └── policies/
-│       └── s3_bucket_full_access_policy.json
-│
-├── scripts/
-│   └── parser.py                # Converts YAML → JSON for Terraform
-│
-└── .github/workflows/
-    ├── kafka-plan.yml           # Plan on PR (environment auto-detected)
-    └── kafka-apply.yml          # Apply on merge to main (auto-approved)
+domains/
+  <domain>/<env>/kafka-request.yaml
+  <domain>/<env>/schemas/*.avsc
+
+catalogs/                  # Aggregated, committed snapshots per env
+  dev|test|qa|prod/
+    kafka-catalog.yaml     # Generated from all domains (per env)
+    schemas-catalog.json   # Generated schema metadata (per env)
+    .lock                  # Deployment lock (per env)
+
+scripts/
+  aggregate-kafka.py       # Merge domain YAML → kafka-catalog.yaml
+  aggregate-schemas.py     # Collect schemas → schemas-catalog.json
+  validate-conflicts.py    # Cross-domain duplicate detection
+  parser.py                # Aggregated catalog → tfvars.json
+
+.github/workflows/
+  kafka-plan.yml           # CI (PR)
+  kafka-apply.yml          # CD (main)
+
+terraform/                # Confluent resources and provider config
+templates/kafka-request.yaml
+README.md (this file)
 ```
 
-### Note on s3_bucket_full_access_policy
-- Purpose: example IAM policy for Terraform state backend access reviews.
-- Location: `terraform/policies/s3_bucket_full_access_policy.json`.
-- Usage: documentation/reference only; not automatically consumed by Terraform.
+---
 
-## Setup: GitHub Secrets
+## Getting Started (domain teams)
 
-Before the first workflow run, set up API credentials in GitHub repo settings → Secrets and variables → Actions:
-
-### 1. Control-Plane Credentials (Per-environment via GitHub Environments)
-
-Create one **Cloud API key** per environment (owned by a service account like `kafka-terraform_runner` with `EnvironmentAdmin` role) and store it as environment-scoped secrets:
-
-- `CONFLUENT_API_KEY`
-- `CONFLUENT_API_SECRET`
-
-**Used for:** Service account creation, role bindings, schema registry operations. Add these under each GitHub Environment (dev/test/qa/prod).
-
-### 2. Data-Plane Credentials (Per-environment via GitHub Environments)
-
-Create one **Kafka cluster–scoped** API key per environment (owned by a service account like `kafka-terraform_runner`) and store it as environment-scoped secrets:
-
-- `KAFKA_API_KEY`
-- `KAFKA_API_SECRET`
-
-**Used for:** Topic creation and data-plane operations. Add these under each GitHub Environment (dev/test/qa/prod).
-
-### 3. AWS Credentials (S3 backend for Terraform state)
-- `AWS_ACCESS_KEY_ID` — AWS account access key
-- `AWS_SECRET_ACCESS_KEY` — AWS account secret key
-
-### 4. GitHub Token (Auto-stored in workflows)
-- `GITHUB_TOKEN` — Auto-provided by GitHub Actions (no manual setup needed); used for PR comments and secret storage.
-
-## Setup Checklist
-
-Before using the workflows, ensure the following are set up. The CI/CD pipelines validate these and will fail early if any are missing.
-
-- GitHub Environments: Create `dev`, `test`, `qa`, `prod` environments.
-- Environment Variables (per environment): `ORGANIZATION_ID`, `ENVIRONMENT_ID`, `KAFKA_CLUSTER_ID`, `REST_ENDPOINT`, `SCHEMA_REGISTRY_ID`.
-- Environment Secrets (per environment): `CONFLUENT_API_KEY`, `CONFLUENT_API_SECRET`, `KAFKA_API_KEY`, `KAFKA_API_SECRET`.
-- Repository Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
-- Repository Variables: `AWS_REGION` (e.g., `us-east-1`), `TF_BUCKET_STATE` (e.g., `platform-engineering-terraform-state`).
-
-Workflows include validation steps for AWS settings (secrets and variables) and will exit with a helpful message if they’re not configured.
-
-## Developer Workflow
-
-### Step 1: Create a Feature Branch
+1) **Scaffold**
 ```bash
-git checkout -b my-service-kafka-setup
+mkdir -p domains/my-team/dev/schemas
+mkdir -p domains/my-team/test/schemas
+mkdir -p domains/my-team/qa/schemas
+mkdir -p domains/my-team/prod/schemas
+cp templates/kafka-request.yaml domains/my-team/dev/
 ```
 
-### Step 2: Create Project Folder Structure
-```bash
-mkdir -p projects/my-service/dev
-mkdir -p projects/my-service/test
-mkdir -p projects/my-service/qa
-mkdir -p projects/my-service/prod
-```
-
-### Step 3: Copy Templates
-```bash
-# Copy template to your project (repeat for each env)
-cp templates/kafka-request.yaml projects/my-service/dev/
-cp templates/kafka-request.yaml projects/my-service/test/
-cp templates/kafka-request.yaml projects/my-service/qa/
-cp templates/kafka-request.yaml projects/my-service/prod/
-```
-
-### Step 4a: If You Don't Need a Schema (Minimal)
-
-Edit `projects/my-service/dev/kafka-request.yaml`:
-- Keep `service_name` as your service name
-- Customize `topics` and `access_config` for your needs
-- **The `schemas:` section is COMMENTED OUT by default** — leave it commented (Terraform will skip schema creation)
-
-Example (most services):
+2) **Edit** `domains/my-team/dev/kafka-request.yaml`
 ```yaml
-service_name: "my-service"
-# ... Confluent Cloud details (do NOT change) ...
+service_name: my-team
+description: Domain-owned resources
+
 topics:
-  - name: "my-service-events"
+  - name: my-events
     partitions: 3
     replication_factor: 3
+    config:
+      retention.ms: 604800000
 
-# SCHEMAS (OPTIONAL)
-# If your service needs a schema:
-# 1. Create an Avro schema file under schemas/dev/
-# 2. Uncomment and customize the block below
-# If you don't need a schema, leave this section commented.
-#
-# schemas:
-#   - subject: "my-service-events-value"
-#     schema_file: "schemas/dev/my-service-schema.avsc"
-```
-
-### Step 4b: If You Need a Schema (Optional)
-
-1. Create your Avro schema:
-   ```bash
-   cat > schemas/dev/my-service-schema.avsc << 'EOF'
-   {
-     "type": "record",
-     "name": "MyServiceEvent",
-     "namespace": "com.myorg.myservice",
-     "fields": [
-       { "name": "id", "type": "string" },
-       { "name": "timestamp", "type": { "type": "long", "logicalType": "timestamp-millis" } }
-     ]
-   }
-   EOF
-   ```
-
-2. Reference it in your `kafka-request.yaml`:
-   ```yaml
-   schemas:
-     - subject: "my-service-events-value"
-       schema_file: "schemas/dev/my-service-schema.avsc"
-   ```
-
-3. Repeat for test, qa, prod in their respective `schemas/<ENV>/` folders.
-
-### Step 4c: If You Need Service Accounts & ACLs (Optional)
-
-Define service accounts with their permissions in one unified section. Each entry creates one service account + one ACL per topic.
-
-```yaml
-topics:
-  - name: "payment-processed"
-    partitions: 6
-    replication_factor: 3
-  - name: "payment-events"
-    partitions: 3
-    replication_factor: 3
+schemas:
+  - subject: my-events-value
+    schema_file: domains/my-team/dev/schemas/my-events.avsc
 
 access_config:
-  - name: "payment-producer"
-    description: "Producer for payment events"
-    role: "DeveloperWrite"
-    topics:
-      - "payment-processed"
-      - "payment-events"
-  - name: "payment-consumer"
-    description: "Consumer for payment events"
-    role: "DeveloperRead"
-    topics:
-      - "payment-processed"
+  - name: my-team-api           # Use domain prefix
+    description: API producer
+    role: DeveloperRead
+    topics: [my-events]
 ```
 
-Terraform will automatically:
-- Create service accounts from each `access_config` entry
-- Generate Kafka API keys and store in **environment-scoped** GitHub secrets
-- Build ACL principals from service account IDs (e.g., `User:sa-abc123def456`)
-- Build crn_patterns for each topic referenced
-- Apply all ACLs to the Kafka cluster
-
-**Result:** 2 service accounts + 3 ACLs (1 producer with 2 topic permissions, 1 consumer with 1 topic permission)
-
-API keys are stored as **environment-scoped secrets** under Settings → Environments → `<ENV>` → Secrets:
-- `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_KEY` (e.g., `CONFLUENT_PAYMENT_PRODUCER_API_KEY`)
-- `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_SECRET` (e.g., `CONFLUENT_PAYMENT_PRODUCER_API_SECRET`)
-
-This means the same service account name can exist in multiple environments without collision.
-
-### Step 5: Commit and Create PR
-```bash
-git add projects/
-git add schemas/dev/my-service-schema.avsc  # (if you created one)
-git commit -m "Add Kafka config for my-service"
-git push -u origin my-service-kafka-setup
+3) **(Optional) Add schema** `domains/my-team/dev/schemas/my-events.avsc`
+```json
+{
+  "type": "record",
+  "name": "MyEvents",
+  "fields": [
+    {"name": "event_id", "type": "string"},
+    {"name": "timestamp", "type": "long"}
+  ]
+}
 ```
 
-### Step 6: CI Runs Automatically
-- GitHub Actions detects `projects/<PROJECT>/<ENV>/kafka-request.yaml` or `schemas/**` changes
-- CI validates YAML, lints it, generates tfvars, and runs `terraform plan`
-- Plan appears as PR comment for review
+4) **Open PR** (feature branch) → CI runs plan and conflict checks.
 
-### Step 7: Merge to Main
-- Merge PR to main
-- CD workflow runs automatically
-- Terraform applies changes to the corresponding environment
-- Kafka topics, schemas, and ACLs are created in Confluent Cloud
-- **If service accounts were defined:** API keys are automatically generated and stored as **environment-scoped secrets** under Settings → Environments → `<ENV>` with names like `CONFLUENT_<NAME>_API_KEY` and `CONFLUENT_<NAME>_API_SECRET`
+5) **Merge to main** → CD applies and updates catalogs; lock auto-released.
 
-## Important Notes
+---
 
-### ⚠️ Parser Uses Environment Variables Only
-- The parser reads Confluent metadata exclusively from GitHub Environment variables, not from YAML.
-- Required environment variables (set per GitHub Environment): `ORGANIZATION_ID`, `ENVIRONMENT_ID`, `KAFKA_CLUSTER_ID`, `REST_ENDPOINT`, `SCHEMA_REGISTRY_ID`.
-- YAML fields for these values are ignored.
+## Required GitHub Configuration
 
-### ✅ You CAN Change These
-- `service_name` — Documentation only (not used by parser/Terraform; reserved for future resource prefixing/tagging)
-- `topics[].name`, `topics[].partitions`, `topics[].replication_factor`
-- `topics[].config` — Retention, compression, etc.
-- `access_config[].name`, `access_config[].role`, `access_config[].topics` — Your service account permissions
+**Repository Secrets (shared):**
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
 
-### Terraform Plan vs Apply
-- **CI (PR):** Shows `terraform plan` (read-only preview)
-- **CD (main):** Runs `terraform apply -auto-approve` (actual infrastructure changes)
+**Repository Variables (shared):**
+- `AWS_REGION`
+- `TF_BUCKET_STATE`
 
-### Environment Isolation
-- State key pattern: `s3://$TF_BUCKET_STATE/terraform/<PROJECT>/<ENV>/data-streaming-platform.tfstate`
-- Example (project `payments`, env `dev`): `s3://$TF_BUCKET_STATE/terraform/payments/dev/data-streaming-platform.tfstate`
+**Environment Variables (per env: dev/test/qa/prod):**
+- `ORGANIZATION_ID`, `ENVIRONMENT_ID`, `KAFKA_CLUSTER_ID`, `REST_ENDPOINT`, `SCHEMA_REGISTRY_ID`
 
-Each project+environment pair has its own isolated Terraform state file (no cross-project or cross-environment interference).
+**Environment Secrets (per env):**
+- `CONFLUENT_API_KEY`, `CONFLUENT_API_SECRET`
+- `KAFKA_API_KEY`, `KAFKA_API_SECRET`
+- Optional Schema Registry: `SCHEMA_REGISTRY_API_KEY`, `SCHEMA_REGISTRY_API_SECRET`, `SCHEMA_REGISTRY_REST_ENDPOINT`
 
-### Multiple Environments in One Commit?
-Each PR/commit should touch **one environment** (one `projects/<PROJECT>/<ENV>/kafka-request.yaml`). If you need to update multiple environments, create separate PRs per environment to maintain clean audit trails and allow environment-specific reviews.
+Workflows will fail fast with clear messages if any are missing.
 
-## Key Files and Their Purpose
+---
 
-- `templates/kafka-request.yaml` — Single template to copy; env/cluster IDs come from GitHub Environment variables
-- `schemas/*/` — Store all Avro schemas here (environment-specific). Do not place schema files under `projects/`.
-- `projects/<PROJECT>/<ENV>/kafka-request.yaml` — Your actual config (becomes source of truth)
-- `scripts/parser.py` — Converts YAML to JSON for Terraform (runs automatically in CI/CD)
-- `terraform/main.tf` — Defines Confluent resources (for each topic, schema, ACL)
-- `terraform/providers.tf` — Backend config (S3 state, environment-isolated keys)
-- `.github/workflows/kafka-plan.yml` — Plan workflow (PR validation; detects project/env from path; backend key per project+env)
-- `.github/workflows/kafka-apply.yml` — Apply workflow (main merge automation; backend key per project+env)
+## CI/CD Workflows (summary)
 
-## Technical Details
+### CI – `kafka-plan.yml` (PR)
+- Detect env from path `domains/<domain>/<env>/...`.
+- Fail if `catalogs/<env>/.lock` exists.
+- Lint all domain `kafka-request.yaml` files for that env.
+- Aggregate → `catalogs/<env>/kafka-catalog.yaml` (temp) + `schemas-catalog.json`.
+- Validate conflicts vs deployed catalogs from main.
+- Parse aggregated catalog → `terraform/terraform.tfvars.json`.
+- Terraform init/validate/plan; post plan to PR.
 
-### Parser (`scripts/parser.py`)
-- **Purpose:** Deterministic converter from `kafka-request.yaml` to JSON for Terraform
-- **Command:** `python scripts/parser.py <input-yaml> <output-json>`
-- **Key feature:** Unified `access_config` structure creates N service accounts + M ACLs
-  - Each `access_config` entry generates: 1 service account + (1 ACL per topic listed)
-  - Example: 2 entries with 3 topics total = 2 service accounts + 3 ACLs
-- **Auto-generation:** 
-  - `principals` built from service account IDs (resolved by Terraform)
-  - `crn_patterns` auto-generated from topic names
-- **Validation:** Ensures all referenced topics exist in the YAML
+### CD – `kafka-apply.yml` (main)
+- Acquire env lock (`catalogs/<env>/.lock`, committed).
+- Aggregate + validate conflicts (fresh).
+- Parse → tfvars; terraform plan/apply.
+- On success: commit updated catalogs, delete lock, push.
+- On failure: delete lock, push (so others can proceed).
 
-### Terraform Setup
-- **Requirements:** Terraform >= 1.3.0 and `confluentinc/confluent` provider (~> 2.55)
-- **Key patterns:**
-  - Resources use `for_each` maps keyed by topic/subject/acl/service-account id
-  - Topics include `lifecycle { prevent_destroy = true }` — do not remove topics without discussion
-  - Schemas use `format = "AVRO"` and load content with `file(each.value.schema_file)`
-  - Service accounts auto-generate API keys and store credentials as **environment-scoped** GitHub secrets
-- **Remote state:** S3 backend configured via workflow `-backend-config` using `TF_BUCKET_STATE` and `AWS_REGION`; keys are scoped per `<PROJECT>/<ENV>`
+---
 
-### Secrets and Variables (GitHub Actions)
-- Environment-scoped secrets (per env: dev/test/qa/prod): `CONFLUENT_API_KEY`, `CONFLUENT_API_SECRET`, `KAFKA_API_KEY`, `KAFKA_API_SECRET`
-- Repository-level secrets (current): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
-- Repository-level variables:
-  - `AWS_REGION` (example: `us-east-1`)
-  - `TF_BUCKET_STATE` (example: `platform-engineering-terraform-state`)
-- Workflows detect `PROJECT` and `ENV` from `projects/<PROJECT>/<ENV>/kafka-request.yaml` and set backend key to `terraform/<PROJECT>/<ENV>/data-streaming-platform.tfstate`
+## Aggregation & Conflict Detection
 
-Environment-scoped variables (set per GitHub Environment: dev/test/qa/prod):
-- `ORGANIZATION_ID`
-- `ENVIRONMENT_ID`
-- `KAFKA_CLUSTER_ID`
-- `REST_ENDPOINT`
-- `SCHEMA_REGISTRY_ID`
+- `aggregate-kafka.py`: merges all domain YAMLs for an env; tags entries with `_domain`.
+- `aggregate-schemas.py`: collects all `.avsc` files; records domain and path.
+- `validate-conflicts.py`: fails if duplicate topic names, schema subjects, or service account names across domains (branch vs deployed catalogs).
 
-These are mandatory for parser execution and must be defined in the GitHub Environment. Do not include these in YAML; the parser validates they are set and will error if any are missing.
+---
 
-### Service Account & API Key Provisioning
-- **Terraform creates:**
-  - `confluent_service_account` resources from YAML definitions
-  - `confluent_api_key` for each service account (Kafka cluster access)
-  - Automatically stores API keys as **environment-scoped secrets** via `null_resource` + GitHub CLI
-- **Secret naming convention:** `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_KEY` and `CONFLUENT_<SERVICE_ACCOUNT_NAME>_API_SECRET`
-- **Storage location:** Secrets are stored under Settings → Environments → `<ENV>` (e.g., dev/test/qa/prod)
-- **Output:** Terraform outputs service account IDs, environment, and corresponding GitHub secret names for reference
-- **Example:** Service account `payment-producer` in `dev` → secrets `CONFLUENT_PAYMENT_PRODUCER_API_KEY` and `CONFLUENT_PAYMENT_PRODUCER_API_SECRET` under the `dev` environment
-- **Benefit:** Same service account name can exist in multiple environments without collision
+## Lock Mechanism (per env)
 
-### Unified Access Configuration Workflow
-- **Single section:** `access_config` replaces separate `service_accounts` and `acls`
-- **Developer intent:** "This service account needs this role on these topics"
-- **One-to-many relationship:** 1 entry → 1 service account + N ACLs (one per topic)
-- **Auto-generation:** Principals and crn_patterns generated from service account IDs and topic names
-- **Flexibility:** Multiple topics per service account, multiple roles possible by creating multiple entries
-- **Example:** 2 service accounts × 3 topics = 2 service accounts + 3 ACLs automatically created
+- Lock file: `catalogs/<env>/.lock` (committed).
+- CI: if lock exists → fail PR with message; no plan runs.
+- CD: creates lock before apply; removes on success or failure.
+- Prevents concurrent deployments to same environment; manual removal only if stuck.
 
-### GitHub Actions Workflows
-- **CI (`kafka-plan.yml`):** Runs on PR for any `**/kafka-request.yaml` or `schemas/**` changes
-  - Validates YAML with `yamllint`
-  - Detects environment from path (e.g., `<PROJECT>/dev/` → `dev`)
-  - Generates tfvars and runs `terraform plan`
-  - Posts plan as PR comment
-- **CD (`kafka-apply.yml`):** Runs on main merge
-  - Applies Terraform with `terraform apply -auto-approve`
-  - Uploads artifact with environment name
+---
+
+## Parser (`scripts/parser.py`)
+
+- Input: aggregated `catalogs/<env>/kafka-catalog.yaml`.
+- Output: `terraform/terraform.tfvars.json`.
+- Strictly uses environment variables (no YAML metadata for org/env/cluster endpoints).
+- Validates schema paths, topic references, required env vars.
+
+Required env vars (must be set in GitHub Environment):
+- `ORGANIZATION_ID`, `ENVIRONMENT_ID`, `KAFKA_CLUSTER_ID`, `REST_ENDPOINT`
+- If schemas present: `SCHEMA_REGISTRY_ID`, `SCHEMA_REGISTRY_API_KEY`, `SCHEMA_REGISTRY_API_SECRET`, `SCHEMA_REGISTRY_REST_ENDPOINT`
+
+---
+
+## Terraform Highlights
+
+- State per domain+env: `terraform/<domain>/<env>/...` (S3 backend via `TF_BUCKET_STATE`).
+- Topics use `prevent_destroy` lifecycle to avoid accidental deletes.
+- Service accounts + Kafka API keys created; secrets stored as environment-scoped GitHub secrets via provisioner.
+- ACLs generated from `access_config` (one SA, multiple topics → multiple ACLs).
+
+Secret naming (env-scoped):
+- `CONFLUENT_<SA>_API_KEY`, `CONFLUENT_<SA>_API_SECRET` (uppercased, hyphens → underscores).
+
+---
+
+## Naming Conventions
+
+- Service accounts: prefix with domain (`payment-api`, `order-processor`).
+- Topics/Schemas: prefer domain-prefixed names to avoid collisions (`payment-events`).
+
+---
+
+## Catalogs (committed snapshots)
+
+- Location: `catalogs/<env>/kafka-catalog.yaml` and `schemas-catalog.json`.
+- Updated only after successful CD apply.
+- Enable auditability and cross-domain visibility.
+
+---
+
+## Migration Notes (old → new)
+
+- Old structure `projects/<project>/<env>/` is replaced by `domains/<domain>/<env>/`.
+- If old folders exist, migrate or delete; new workflows watch `domains/**` paths.
+- Terraform state keys remain per domain; old state can coexist until cleaned.
+
+---
 
 ## Troubleshooting
 
-**PR comment shows "missing required fields":**
-- Check that `environment_id`, `kafka_cluster_id`, `rest_endpoint`, `schema_registry_id` are present (they are auto-filled from templates)
-- Check YAML formatting (indentation, quotes)
+- **Env locked:** Wait for current deployment; lock is auto-released on finish. If stuck, remove `.lock` in `catalogs/<env>/` on main.
+- **Conflict detected:** Rename with domain prefix or coordinate with owning domain; validator shows offending names/domains.
+- **Missing vars/secrets:** Workflows print which env secret/var is missing; add to GitHub Environment or repo secrets/vars.
+- **Schema file not found:** Ensure path includes domain/env (`domains/<domain>/<env>/schemas/...`).
+- **Unexpected deletes in plan:** Stop; check state key and definitions; topics are protected with `prevent_destroy`.
 
-**Schema file not found error:**
-- Verify the schema file path in `kafka-request.yaml` matches where you created it
-- Ensure it's under `schemas/<ENV>/` with the correct name
+---
 
-**Terraform plan shows no changes:**
-- Check if resources already exist in Confluent Cloud for that environment
-- Verify ACL principals and roles are correct
+## Quick Validation Plan
 
-**Want to add/remove topics without changing schema:**
-- Edit `topics:` section in your kafka-request.yaml
-- Leave `schemas:` unchanged or remove it entirely
-- Commit and push
+1) Create test domain `domains/test-team/dev/` with one topic + SA.
+2) Open PR → ensure CI passes (aggregation, conflict check, plan posted).
+3) Merge → ensure CD acquires lock, applies, updates catalogs, releases lock.
+4) Try second PR during deploy → CI should fail on lock; re-run after lock release.
+5) Test conflict: two domains define same topic → CI should fail with clear message.
 
-**Service account API keys not showing in GitHub secrets:**
-- Ensure `GITHUB_TOKEN` has write permissions to secrets (it does by default in GitHub Actions)
-- Check GitHub Actions workflow logs for errors during `terraform apply`
-- Verify service account names are valid (alphanumeric, hyphens)
-- Secrets are stored as **environment-scoped** under Settings → Environments → `<ENV>` → Secrets
-- Secret names: `CONFLUENT_<UPPER_NAME>_API_KEY` and `CONFLUENT_<UPPER_NAME>_API_SECRET`
+---
 
-**How to use generated service account credentials:**
-- After CD completes, navigate to Settings → Secrets and variables → Actions → Environments → `<ENV>`
-- Find your service account secrets (e.g., `CONFLUENT_PAYMENT_PRODUCER_API_KEY` under `dev` environment)
-- To reference in workflows that run in that environment: `${{ secrets.CONFLUENT_PAYMENT_PRODUCER_API_KEY }}`
-- The workflow must set `environment: dev` (or the appropriate env) to access environment-scoped secrets
+## Developer Workflow (domains)
 
-## Questions?
+1) Create a branch.
+2) Create domain folders: `domains/<domain>/dev|test|qa|prod/` (include `schemas/` if needed).
+3) Copy `templates/kafka-request.yaml` into the target env folder; edit topics, schemas (optional), access_config.
+4) Add `.avsc` files under `domains/<domain>/<env>/schemas/` and reference via `schema_file`.
+5) Open a PR touching one environment; CI will lint, aggregate, validate conflicts, and plan.
+6) Merge to main; CD will acquire the env lock, apply, update catalogs, and release the lock.
 
-Contact the platform team. Environment-specific cluster details are locked; request changes through the platform team if needed.
+## Technical Details
+
+- Parser command: `python scripts/parser.py catalogs/<env>/kafka-catalog.yaml terraform/terraform.tfvars.json` (invoked by workflows). Uses only environment variables for Confluent metadata.
+- Terraform state key: `s3://$TF_BUCKET_STATE/terraform/<domain>/<env>/data-streaming-platform.tfstate`.
+- Topics use `prevent_destroy`; avoid destructive changes without coordination.
+- `access_config` entries → 1 service account + 1 ACL per referenced topic; API keys stored as environment-scoped secrets: `CONFLUENT_<UPPER_NAME>_API_KEY` / `_API_SECRET`.
+- CI/CD detects environment from the path `domains/<domain>/<env>/...`; lock file prevents concurrent applies per environment.
+
+## Secrets & Variables (GitHub)
+
+- Repo secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+- Repo vars: `AWS_REGION`, `TF_BUCKET_STATE`.
+- Environment vars (per env): `ORGANIZATION_ID`, `ENVIRONMENT_ID`, `KAFKA_CLUSTER_ID`, `REST_ENDPOINT`, `SCHEMA_REGISTRY_ID` (required when schemas are used).
+- Environment secrets (per env): `CONFLUENT_API_KEY`, `CONFLUENT_API_SECRET`, `KAFKA_API_KEY`, `KAFKA_API_SECRET`; optional schema registry keys if needed.
+
+## Signals to Watch
+
+- CI fails fast if lock exists, env vars/secrets are missing, or conflicts detected (duplicate topic/subject/service account).
+- CD always cleans up the lock (success or failure) and commits updated catalogs on success.
+
+## Status
+
+Domain-based workflows are the source of truth; legacy `projects/` and separate docs have been removed.

@@ -3,40 +3,47 @@ on:
   push:
     branches: [ main, features ]
     paths:
-      - '**/kafka-request.yaml'
-      - 'schemas/**'
+      - 'domains/**/kafka-request.yaml'
+      - 'domains/**/schemas/**'
+      - 'catalogs/**'
 
 jobs:
   detect:
     runs-on: ubuntu-latest
     outputs:
       env: ${{ steps.pick.outputs.env }}
-      file: ${{ steps.pick.outputs.file }}
-      project: ${{ steps.pick.outputs.project }}
+      domain: ${{ steps.pick.outputs.domain }}
     steps:
       - uses: actions/checkout@v4
-      - name: Detect environment from changed file
+      - name: Detect environment(s) from changed files
         id: pick
         run: |
-          file=$(git ls-files '*kafka-request.yaml' | head -n1)
-          if [ -z "$file" ]; then
-            echo "No kafka-request.yaml found in repository" >&2
+          # Find all changed kafka-request.yaml files
+          files=$(git ls-files 'domains/**/kafka-request.yaml')
+          
+          if [ -z "$files" ]; then
+            echo "No kafka-request.yaml found in domains/" >&2
             exit 1
           fi
-          env_name=$(echo "$file" | cut -d'/' -f3)
-          project_name=$(echo "$file" | cut -d'/' -f2)
-          if [ -z "$env_name" ] || [ "$env_name" = "kafka-request.yaml" ]; then
-            echo "Error: Could not extract environment from path: $file" >&2
+          
+          # Extract unique environments
+          envs=$(echo "$files" | cut -d'/' -f3 | sort -u)
+          
+          if [ -z "$envs" ]; then
+            echo "Error: Could not extract environment from path" >&2
             exit 1
           fi
-          if [ -z "$project_name" ]; then
-            echo "Error: Could not extract project from path: $file" >&2
-            exit 1
-          fi
+          
+          # Use the first environment found (in this serial approach)
+          env_name=$(echo "$envs" | head -n1)
+          domain_name=$(echo "$files" | head -n1 | cut -d'/' -f2)
+          
+          echo "Detected environment: $env_name"
+          echo "Detected domain: $domain_name"
+          
           {
             echo "env=$env_name"
-            echo "file=$file"
-            echo "project=$project_name"
+            echo "domain=$domain_name"
           } >> "$GITHUB_OUTPUT"
 
   apply:
@@ -45,8 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ENVIRONMENT: "${{ needs.detect.outputs.env }}"
-      KAFKA_FILE: "${{ needs.detect.outputs.file }}"
-      PROJECT: "${{ needs.detect.outputs.project }}"
+      DOMAIN: "${{ needs.detect.outputs.domain }}"
       TF_VAR_confluent_api_key: "${{ secrets.CONFLUENT_API_KEY }}"
       TF_VAR_confluent_api_secret: "${{ secrets.CONFLUENT_API_SECRET }}"
       TF_VAR_kafka_api_key: "${{ secrets.KAFKA_API_KEY }}"
@@ -92,6 +98,21 @@ jobs:
         run: |
           echo "TF_BUCKET_STATE=${{ vars.TF_BUCKET_STATE }}" >> "$GITHUB_ENV"
 
+      - name: Acquire environment lock
+        run: |
+          LOCK_FILE="catalogs/${{ env.ENVIRONMENT }}/.lock"
+          mkdir -p "catalogs/${{ env.ENVIRONMENT }}"
+          
+          # Create lock file
+          echo "Lock acquired at $(date -u)" > "$LOCK_FILE"
+          git add "$LOCK_FILE"
+          git config user.name "kafka-automation[bot]"
+          git config user.email "kafka-automation@example.com"
+          git commit -m "ci: acquire lock for ${{ env.ENVIRONMENT }} deployment"
+          git push origin ${{ github.ref_name }}
+          
+          echo "✓ Lock acquired for ${{ env.ENVIRONMENT }}"
+
       - name: Validate API secrets exist
         run: |
           if [ -z "$TF_VAR_confluent_api_key" ] || [ -z "$TF_VAR_confluent_api_secret" ]; then
@@ -105,28 +126,110 @@ jobs:
             exit 1
           fi
 
-      - name: Lint kafka-request.yaml
+      - name: Lint kafka-request.yaml files
         run: |
           pip install yamllint
-          yamllint "$KAFKA_FILE"
+          for file in domains/*/${{ env.ENVIRONMENT }}/kafka-request.yaml; do
+            if [ -f "$file" ]; then
+              echo "Linting $file..."
+              yamllint "$file"
+            fi
+          done
 
-      - name: Generate tfvars from YAML
+      - name: Aggregate kafka resources
         run: |
           pip install pyyaml
-          echo "Using kafka request file: $KAFKA_FILE"
-          echo "Environment: $ENVIRONMENT"
-          python scripts/parser.py "$KAFKA_FILE" terraform/terraform.tfvars.json
+          python scripts/aggregate-kafka.py --env ${{ env.ENVIRONMENT }} --output-dir catalogs
+          
+      - name: Aggregate schemas
+        run: |
+          python scripts/aggregate-schemas.py --env ${{ env.ENVIRONMENT }} --output-dir catalogs
+
+      - name: Validate cross-domain conflicts
+        run: |
+          pip install pyyaml
+          DEPLOYED_KAFKA="catalogs/${{ env.ENVIRONMENT }}/kafka-catalog.yaml.deployed"
+          DEPLOYED_SCHEMAS="catalogs/${{ env.ENVIRONMENT }}/schemas-catalog.json.deployed"
+          DEPLOY_BRANCH="${{ github.ref_name }}"
+          
+          # Try to load deployed catalogs from current branch if they exist
+          if git show "origin/${DEPLOY_BRANCH}:catalogs/${{ env.ENVIRONMENT }}/kafka-catalog.yaml" > "$DEPLOYED_KAFKA" 2>/dev/null; then
+            echo "✓ Loaded deployed kafka catalog from ${DEPLOY_BRANCH} for comparison"
+          else
+            echo "ℹ️  No deployed kafka catalog found on ${DEPLOY_BRANCH} (first deployment for this environment?)"
+            rm -f "$DEPLOYED_KAFKA"
+          fi
+          
+          if git show "origin/${DEPLOY_BRANCH}:catalogs/${{ env.ENVIRONMENT }}/schemas-catalog.json" > "$DEPLOYED_SCHEMAS" 2>/dev/null; then
+            echo "✓ Loaded deployed schemas catalog from ${DEPLOY_BRANCH} for comparison"
+          else
+            echo "ℹ️  No deployed schemas catalog found on ${DEPLOY_BRANCH} (first deployment for this environment?)"
+            rm -f "$DEPLOYED_SCHEMAS"
+          fi
+          
+          python scripts/validate-conflicts.py \
+            --env ${{ env.ENVIRONMENT }} \
+            --branch-kafka "catalogs/${{ env.ENVIRONMENT }}/kafka-catalog.yaml" \
+            --branch-schemas "catalogs/${{ env.ENVIRONMENT }}/schemas-catalog.json" \
+            --deployed-kafka "$DEPLOYED_KAFKA" \
+            --deployed-schemas "$DEPLOYED_SCHEMAS"
+
+      - name: Generate tfvars from aggregated catalog
+        run: |
+          echo "Generating tfvars from aggregated kafka-catalog.yaml..."
+          python scripts/parser.py "catalogs/${{ env.ENVIRONMENT }}/kafka-catalog.yaml" terraform/terraform.tfvars.json
 
       - name: Terraform Init
-        run: terraform -chdir=terraform init -backend-config="bucket=$TF_BUCKET_STATE" -backend-config="key=terraform/${PROJECT}/${ENVIRONMENT}/data-streaming-platform.tfstate" -backend-config="region=$AWS_REGION" -reconfigure
+        run: |
+          terraform -chdir=terraform init \
+            -backend-config="bucket=$TF_BUCKET_STATE" \
+            -backend-config="key=terraform/${{ env.DOMAIN }}/${{ env.ENVIRONMENT }}/data-streaming-platform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -reconfigure
 
       - name: Terraform Validate
         run: terraform -chdir=terraform validate
 
       - name: Terraform Plan
-        run: terraform -chdir=terraform plan -no-color -out=tfplan.bin -var-file="terraform.tfvars.json" -var="github_repo_owner=${{ github.repository_owner }}" -var="github_repo_name=${{ github.event.repository.name }}" -var="github_token=${{ secrets.GITHUB_TOKEN }}" -var="github_environment=${{ needs.detect.outputs.env }}"
+        run: |
+          terraform -chdir=terraform plan \
+            -no-color \
+            -out=tfplan.bin \
+            -var-file="terraform.tfvars.json" \
+            -var="github_repo_owner=${{ github.repository_owner }}" \
+            -var="github_repo_name=${{ github.event.repository.name }}" \
+            -var="github_token=${{ secrets.GITHUB_TOKEN }}" \
+            -var="github_environment=${{ needs.detect.outputs.env }}"
 
       - name: Terraform Apply
-        run: terraform -chdir=terraform apply -no-color -auto-approve tfplan.bin
+        run: |
+          terraform -chdir=terraform apply -no-color -auto-approve tfplan.bin
         env:
           GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Update catalogs and release lock
+        if: success()
+        run: |
+          git fetch origin ${{ github.ref_name }}
+          git checkout origin/${{ github.ref_name }} -- catalogs/${{ env.ENVIRONMENT }}/
+          git add catalogs/${{ env.ENVIRONMENT }}/kafka-catalog.yaml catalogs/${{ env.ENVIRONMENT }}/schemas-catalog.json
+          rm -f "catalogs/${{ env.ENVIRONMENT }}/.lock"
+          git add "catalogs/${{ env.ENVIRONMENT }}/.lock"
+          git config user.name "kafka-automation[bot]"
+          git config user.email "kafka-automation@example.com"
+          git commit -m "chore: update catalogs and release lock for ${{ env.ENVIRONMENT }} (deployment successful)" || echo "No catalog changes to commit"
+          git push origin ${{ github.ref_name }}
+          echo "✓ Deployment successful; lock released"
+
+      - name: Release lock on failure
+        if: failure()
+        run: |
+          LOCK_FILE="catalogs/${{ env.ENVIRONMENT }}/.lock"
+          git fetch origin ${{ github.ref_name }}
+          rm -f "$LOCK_FILE"
+          git add "$LOCK_FILE"
+          git config user.name "kafka-automation[bot]"
+          git config user.email "kafka-automation@example.com"
+          git commit -m "ci: release lock (deployment failed) for ${{ env.ENVIRONMENT }}" || echo "Lock already released"
+          git push origin ${{ github.ref_name }}
+          echo "❌ Deployment failed; lock released"

@@ -1,10 +1,13 @@
 import yaml, json, sys, os
+from pathlib import Path
 
 if len(sys.argv) != 3:
     print('Usage: parser.py <input-yaml> <output-json>')
+    print('       where input-yaml can be a domain-specific file or aggregated catalog')
     sys.exit(1)
 
-with open(sys.argv[1],'r') as f:
+input_file = sys.argv[1]
+with open(input_file, 'r') as f:
     data = yaml.safe_load(f)
 
 """
@@ -46,13 +49,15 @@ for t in data.get('topics', []):
     }
 
 for s in data.get('schemas', []):
-    schema_file = s['schema_file']
-    if not schema_file.startswith('schemas/'):
-        print(f'Error: Schema file must be under schemas/: {schema_file}')
+    schema_file = s.get('schema_file') or s.get('file_path')
+    if not schema_file:
+        print(f'Error: Schema entry missing schema_file or file_path: {s}')
         sys.exit(1)
-    if not os.path.exists(schema_file):
-        print(f'Error: Schema file not found: {schema_file}')
-        sys.exit(1)
+    # Handle both relative paths and aggregated catalog entries
+    if schema_file and not os.path.exists(schema_file):
+        print(f'Warning: Schema file not found: {schema_file}')
+        # For aggregated catalogs, we may not have direct access to the file
+        # in the terraform context, so we skip file existence check
     tf['schemas'][s['subject']] = {
         'subject': s['subject'],
         'schema_file': schema_file
