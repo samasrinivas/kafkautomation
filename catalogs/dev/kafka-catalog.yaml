@@ -23,7 +23,14 @@ topics:
   config:
     retention.ms: '604800000'
   _domain: orders
+- name: WarehousesEvents
+  partitions: 6
+  replication_factor: 3
+  config:
+    retention.ms: '604800000'
+  _domain: warehouses
 schemas: []
 access_config: []
 domains:
 - orders
+- warehouses
