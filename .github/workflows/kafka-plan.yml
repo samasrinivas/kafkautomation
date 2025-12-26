@@ -74,6 +74,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for base branch comparison
+      
+      - name: Fetch base branch for conflict validation
+        run: |
+          git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
+          echo "✓ Fetched base branch ${{ github.base_ref }} for comparison"
+      
       - uses: hashicorp/setup-terraform@v3
 
       - name: Validate AWS settings exist
