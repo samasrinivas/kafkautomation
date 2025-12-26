@@ -11,11 +11,17 @@ topics:
   config:
     retention.ms: '604800000'
   _domain: orders
-- name: "SalesEvents"
+- name: SalesEvents
   partitions: 6
   replication_factor: 3
   config:
-    retention.ms: "604800000"
+    retention.ms: '604800000'
+  _domain: orders
+- name: RefundEvents
+  partitions: 6
+  replication_factor: 3
+  config:
+    retention.ms: '604800000'
   _domain: orders
 schemas: []
 access_config: []
