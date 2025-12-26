@@ -200,8 +200,6 @@ jobs:
       - name: Update catalogs and release lock
         if: success()
         run: |
-          git fetch origin ${{ github.ref_name }}
-          git checkout origin/${{ github.ref_name }} -- catalogs/${{ env.ENVIRONMENT }}/
           git add catalogs/${{ env.ENVIRONMENT }}/kafka-catalog.yaml catalogs/${{ env.ENVIRONMENT }}/schemas-catalog.json
           rm -f "catalogs/${{ env.ENVIRONMENT }}/.lock"
           git add "catalogs/${{ env.ENVIRONMENT }}/.lock"
